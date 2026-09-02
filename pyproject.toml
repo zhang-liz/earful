@@ -1,0 +1,17 @@
+[project]
+name = "tts-reader"
+version = "0.1.0"
+description = "Local text-to-speech reader using Kokoro"
+readme = "README.md"
+authors = [
+    { name = "Liz Zhang", email = "hello.liz.zhang@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.141.1",
+    "kokoro>=0.9.4",
+    "numpy>=2.5.2",
+    "python-multipart>=0.0.32",
+    "soundfile>=0.14.0",
+    "uvicorn[standard]>=0.52.4",
+]

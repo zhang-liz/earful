@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Read It To Me</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #faf9f7;
+    --panel: #ffffff;
+    --ink: #1b1a17;
+    --muted: #6b6862;
+    --line: #e4e1db;
+    --accent: #b4531f;
+    --accent-soft: #fdf0e7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16151300;
+      --bg: #161513;
+      --panel: #1f1e1b;
+      --ink: #f2efe9;
+      --muted: #a09c94;
+      --line: #33302b;
+      --accent: #e8874a;
+      --accent-soft: #2b2119;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 20px 64px;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  main { max-width: 780px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.02em; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+  label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+  textarea {
+    width: 100%;
+    min-height: 260px;
+    resize: vertical;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  textarea:focus, select:focus, button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+  .field { flex: 1 1 200px; }
+  select, input[type=range] {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--bg);
+    color: var(--ink);
+    font: inherit;
+  }
+  input[type=range] { padding: 0; }
+  button {
+    border: 0;
+    border-radius: 9px;
+    padding: 11px 18px;
+    font: 600 14px/1 inherit;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+  }
+  button.ghost {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .meta { color: var(--muted); font-size: 13px; display: flex; justify-content: space-between; gap: 12px; }
+  .bar { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 12px 0 8px; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s ease; }
+  audio { width: 100%; margin-top: 8px; }
+  .hidden { display: none; }
+  .error { color: #c0392b; font-size: 13px; }
+  a.download { color: var(--accent); font-size: 13px; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Read It To Me</h1>
+  <p class="sub">Paste anything. Pick a voice. Get an audio file.</p>
+
+  <div class="panel">
+    <label for="text">Your text</label>
+    <textarea id="text" placeholder="Paste an article, a chapter, notes — any length."></textarea>
+    <div class="meta"><span id="count">0 words · 0 characters</span><span id="estimate"></span></div>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <div class="field">
+        <label for="voice">Voice</label>
+        <select id="voice"></select>
+      </div>
+      <div class="field">
+        <label for="speed">Speed · <span id="speedLabel">1.00×</span></label>
+        <input id="speed" type="range" min="0.5" max="2" step="0.05" value="1" />
+      </div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button id="go">Read it to me</button>
+      <button id="sample" class="ghost">Hear this voice</button>
+    </div>
+  </div>
+
+  <div class="panel hidden" id="result">
+    <div class="meta"><span id="status">Starting…</span><span id="elapsed"></span></div>
+    <div class="bar"><i id="fill"></i></div>
+    <audio id="player" controls class="hidden"></audio>
+    <a id="download" class="download hidden" download>Download the audio file</a>
+    <p id="error" class="error hidden"></p>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const text = $("text"), voice = $("voice"), speed = $("speed");
+let stream = null;
+
+function refreshCount() {
+  const value = text.value.trim();
+  const words = value ? value.split(/\s+/).length : 0;
+  $("count").textContent = `${words.toLocaleString()} words · ${text.value.length.toLocaleString()} characters`;
+  // Kokoro narrates at roughly 150 words per minute at 1x.
+  const minutes = words / (150 * Number(speed.value));
+  $("estimate").textContent = words ? `about ${minutes < 1 ? "under a minute" : Math.round(minutes) + " min"} of audio` : "";
+}
+
+async function loadVoices() {
+  const data = await (await fetch("/voices")).json();
+  for (const item of data.voices) {
+    const option = document.createElement("option");
+    option.value = item.id;
+    option.textContent = item.label;
+    voice.append(option);
+  }
+  voice.value = data.default;
+}
+
+function setBusy(busy) {
+  $("go").disabled = busy;
+  $("sample").disabled = busy;
+}
+
+async function speak() {
+  if (!text.value.trim()) { text.focus(); return; }
+  if (stream) stream.close();
+  setBusy(true);
+  $("result").classList.remove("hidden");
+  $("player").classList.add("hidden");
+  $("download").classList.add("hidden");
+  $("error").classList.add("hidden");
+  $("fill").style.width = "0";
+  $("status").textContent = "Warming up the voice…";
+
+  const response = await fetch("/speak", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: text.value, voice: voice.value, speed: Number(speed.value) })
+  });
+
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({ detail: response.statusText }));
+    fail(detail.detail || "Something went wrong.");
+    return;
+  }
+
+  const job = await response.json();
+  stream = new EventSource(`/progress/${job.id}`);
+  stream.onmessage = (event) => {
+    const update = JSON.parse(event.data);
+    const percent = update.total ? (update.done / update.total) * 100 : 0;
+    $("fill").style.width = `${percent}%`;
+    $("elapsed").textContent = `${update.elapsed}s elapsed`;
+
+    if (update.state === "running") {
+      $("status").textContent = update.done
+        ? `Reading part ${update.done} of ${update.total}…`
+        : "Warming up the voice…";
+    } else if (update.state === "ready") {
+      stream.close(); stream = null; setBusy(false);
+      $("fill").style.width = "100%";
+      $("status").textContent = `Done — ${Math.round(update.seconds / 60)} min ${Math.round(update.seconds % 60)} s of audio`;
+      const player = $("player");
+      player.src = update.url;
+      player.classList.remove("hidden");
+      const link = $("download");
+      link.href = update.url;
+      link.classList.remove("hidden");
+    } else if (update.state === "error") {
+      stream.close(); stream = null;
+      fail(update.error);
+    }
+  };
+  stream.onerror = () => { if (stream) { stream.close(); stream = null; } setBusy(false); };
+}
+
+function fail(message) {
+  setBusy(false);
+  $("status").textContent = "Stopped";
+  $("error").textContent = message;
+  $("error").classList.remove("hidden");
+}
+
+async function sample() {
+  setBusy(true);
+  const line = "This is how I sound. I can read your whole article in this voice, start to finish.";
+  const response = await fetch("/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: line, voice: voice.value, speed: Number(speed.value) })
+  });
+  setBusy(false);
+  if (!response.ok) return;
+  const url = URL.createObjectURL(await response.blob());
+  new Audio(url).play();
+}
+
+text.addEventListener("input", refreshCount);
+speed.addEventListener("input", () => {
+  $("speedLabel").textContent = `${Number(speed.value).toFixed(2)}×`;
+  refreshCount();
+});
+$("go").addEventListener("click", speak);
+$("sample").addEventListener("click", sample);
+loadVoices();
+refreshCount();
+</script>
+</body>
+</html>

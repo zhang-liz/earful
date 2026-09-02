@@ -1,0 +1,205 @@
+"""Kokoro text-to-speech engine with chunking for long documents."""
+
+from __future__ import annotations
+
+import re
+import threading
+from dataclasses import dataclass
+from typing import Callable, Iterator
+
+import numpy as np
+
+SAMPLE_RATE = 24000
+
+# Kokoro voices, grouped by the language code its pipeline needs.
+VOICES: dict[str, list[tuple[str, str]]] = {
+    "a": [
+        ("af_heart", "Heart — US female, warmest overall"),
+        ("af_bella", "Bella — US female, expressive"),
+        ("af_nicole", "Nicole — US female, soft/ASMR"),
+        ("af_aoede", "Aoede — US female, calm"),
+        ("af_kore", "Kore — US female, clear"),
+        ("af_sarah", "Sarah — US female, bright"),
+        ("am_michael", "Michael — US male, warm"),
+        ("am_fenrir", "Fenrir — US male, deep"),
+        ("am_puck", "Puck — US male, lively"),
+        ("am_adam", "Adam — US male, neutral"),
+    ],
+    "b": [
+        ("bf_emma", "Emma — UK female, rich"),
+        ("bf_isabella", "Isabella — UK female, poised"),
+        ("bm_george", "George — UK male, classic narrator"),
+        ("bm_fable", "Fable — UK male, storyteller"),
+        ("bm_daniel", "Daniel — UK male, measured"),
+    ],
+}
+
+DEFAULT_VOICE = "af_heart"
+
+# Splitting a chunk: try paragraph breaks, then sentence ends, then any space.
+_PARAGRAPH_SPLIT = re.compile(r"\n\s*\n")
+# Python lookbehind must be fixed width, so spell out both cases: a bare
+# sentence end, or one followed by a closing quote or bracket.
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|(?<=[.!?][\"')\]])\s+")
+
+# Roughly the length Kokoro handles in one pass without losing prosody.
+MAX_CHUNK_CHARS = 800
+
+
+def _lang_code(voice: str) -> str:
+    """Kokoro picks its phonemizer from the voice name's first letter."""
+    return voice[0] if voice and voice[0] in VOICES else "a"
+
+
+def normalize(text: str) -> str:
+    """Tidy pasted article text: strip odd whitespace, keep paragraph breaks."""
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = text.replace(" ", " ").replace("​", "")
+    # Curly quotes and dashes confuse the phonemizer more than they help.
+    for bad, good in (
+        ("‘", "'"), ("’", "'"),
+        ("“", '"'), ("”", '"'),
+        ("–", "-"), ("—", " - "),
+        ("…", "..."),
+    ):
+        text = text.replace(bad, good)
+    # Collapse runs of spaces/tabs, and runs of blank lines down to one break.
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _split_long(piece: str, limit: int) -> list[str]:
+    """Break one oversized piece on sentence ends, then on spaces as a last resort."""
+    if len(piece) <= limit:
+        return [piece]
+
+    out: list[str] = []
+    buffer = ""
+    for sentence in _SENTENCE_SPLIT.split(piece):
+        if not sentence:
+            continue
+        if len(buffer) + len(sentence) + 1 <= limit:
+            buffer = f"{buffer} {sentence}".strip()
+            continue
+        if buffer:
+            out.append(buffer)
+        if len(sentence) <= limit:
+            buffer = sentence
+            continue
+        # A single sentence longer than the limit: cut it on word boundaries.
+        words = sentence.split(" ")
+        buffer = ""
+        for word in words:
+            if len(buffer) + len(word) + 1 <= limit:
+                buffer = f"{buffer} {word}".strip()
+            else:
+                if buffer:
+                    out.append(buffer)
+                buffer = word
+    if buffer:
+        out.append(buffer)
+    return out
+
+
+def chunk(text: str, limit: int = MAX_CHUNK_CHARS) -> list[str]:
+    """Cut a document into speakable chunks, preferring paragraph boundaries."""
+    text = normalize(text)
+    if not text:
+        return []
+
+    chunks: list[str] = []
+    buffer = ""
+    for paragraph in _PARAGRAPH_SPLIT.split(text):
+        paragraph = paragraph.strip()
+        if not paragraph:
+            continue
+        if len(buffer) + len(paragraph) + 2 <= limit:
+            buffer = f"{buffer}\n\n{paragraph}".strip()
+            continue
+        if buffer:
+            chunks.append(buffer)
+            buffer = ""
+        for part in _split_long(paragraph, limit):
+            if len(buffer) + len(part) + 2 <= limit:
+                buffer = f"{buffer}\n\n{part}".strip()
+            else:
+                if buffer:
+                    chunks.append(buffer)
+                buffer = part
+    if buffer:
+        chunks.append(buffer)
+    return chunks
+
+
+@dataclass
+class Progress:
+    done: int
+    total: int
+    text: str
+
+
+class Engine:
+    """Lazily loads one Kokoro pipeline per language code and reuses it."""
+
+    def __init__(self) -> None:
+        self._pipelines: dict[str, object] = {}
+        self._lock = threading.Lock()
+
+    def pipeline(self, lang: str):
+        with self._lock:
+            if lang not in self._pipelines:
+                from kokoro import KPipeline
+
+                self._pipelines[lang] = KPipeline(lang_code=lang, repo_id="hexgrad/Kokoro-82M")
+            return self._pipelines[lang]
+
+    def warm(self, voice: str = DEFAULT_VOICE) -> None:
+        """Download and load weights up front so the first request is not slow."""
+        self.pipeline(_lang_code(voice))
+
+    def synthesize(
+        self,
+        text: str,
+        voice: str = DEFAULT_VOICE,
+        speed: float = 1.0,
+        on_progress: Callable[[Progress], None] | None = None,
+    ) -> np.ndarray:
+        """Render the whole text to one audio array, chunk by chunk."""
+        pieces = list(
+            self.stream(text, voice=voice, speed=speed, on_progress=on_progress)
+        )
+        if not pieces:
+            return np.zeros(0, dtype=np.float32)
+        return np.concatenate(pieces)
+
+    def stream(
+        self,
+        text: str,
+        voice: str = DEFAULT_VOICE,
+        speed: float = 1.0,
+        on_progress: Callable[[Progress], None] | None = None,
+    ) -> Iterator[np.ndarray]:
+        """Yield audio one chunk at a time, with a short pause between chunks."""
+        chunks = chunk(text)
+        if not chunks:
+            return
+
+        pipeline = self.pipeline(_lang_code(voice))
+        gap = np.zeros(int(SAMPLE_RATE * 0.25), dtype=np.float32)
+
+        for index, piece in enumerate(chunks, start=1):
+            audio_parts = [
+                result.audio.detach().cpu().numpy().astype(np.float32)
+                for result in pipeline(piece, voice=voice, speed=speed)
+                if result.audio is not None
+            ]
+            if audio_parts:
+                yield np.concatenate(audio_parts)
+                if index < len(chunks):
+                    yield gap
+            if on_progress:
+                on_progress(Progress(done=index, total=len(chunks), text=piece))
+
+
+engine = Engine()
