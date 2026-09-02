@@ -45,6 +45,10 @@ _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|(?<=[.!?][\"')\]])\s+")
 # Roughly the length Kokoro handles in one pass without losing prosody.
 MAX_CHUNK_CHARS = 800
 
+# A chunk is also a jump target in the reader, so keep them paragraph-sized:
+# never glue more than this many paragraphs together, however short they are.
+MAX_PARAGRAPHS_PER_CHUNK = 1
+
 
 def _lang_code(voice: str) -> str:
     """Kokoro picks its phonemizer from the voice name's first letter."""
@@ -110,25 +114,36 @@ def chunk(text: str, limit: int = MAX_CHUNK_CHARS) -> list[str]:
 
     chunks: list[str] = []
     buffer = ""
+    held = 0  # paragraphs currently merged into buffer
+
+    def flush() -> None:
+        nonlocal buffer, held
+        if buffer:
+            chunks.append(buffer)
+        buffer = ""
+        held = 0
+
     for paragraph in _PARAGRAPH_SPLIT.split(text):
         paragraph = paragraph.strip()
         if not paragraph:
             continue
-        if len(buffer) + len(paragraph) + 2 <= limit:
+        # Merge only while both the length and the paragraph count allow it.
+        if (
+            held < MAX_PARAGRAPHS_PER_CHUNK
+            and len(buffer) + len(paragraph) + 2 <= limit
+        ):
             buffer = f"{buffer}\n\n{paragraph}".strip()
+            held += 1
             continue
-        if buffer:
-            chunks.append(buffer)
-            buffer = ""
-        for part in _split_long(paragraph, limit):
-            if len(buffer) + len(part) + 2 <= limit:
-                buffer = f"{buffer}\n\n{part}".strip()
-            else:
-                if buffer:
-                    chunks.append(buffer)
-                buffer = part
-    if buffer:
-        chunks.append(buffer)
+        flush()
+        parts = _split_long(paragraph, limit)
+        # A paragraph too long for one pass becomes several parts; the last
+        # one stays open in case the next paragraph still fits beside it.
+        for part in parts[:-1]:
+            chunks.append(part)
+        buffer = parts[-1]
+        held = 1
+    flush()
     return chunks
 
 

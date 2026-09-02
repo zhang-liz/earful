@@ -19,15 +19,28 @@ To use a different port: `PORT=9000 ./run.sh`
 ## Use it
 
 1. Paste your text — an article, a chapter, anything. Length does not matter.
-2. Pick a voice. Press **Hear this voice** to sample one first.
+2. Pick a voice. Press **Hear voice** to sample one first.
 3. Press **Read it to me**. It starts reading after a couple of seconds and
    keeps rendering the rest while you listen.
 
-Drag the **Speed** slider at any time, including mid-sentence — it takes effect
-straight away and the pitch stays natural. Press **Space** to play or pause.
-**Download** appears once the whole thing has rendered, if you want to keep it.
+The article fills the middle, split into parts. The part being read is boxed
+and marked with a caret. **Click any part to jump straight to it.**
 
-Downloaded files are saved in `output/`. Delete them any time.
+Controls live in the left sidebar:
+
+| Control | What it does |
+|---|---|
+| `1x` `1.5x` `2x` | One-press speed presets |
+| Slider | Any speed from 0.5x to 3x |
+| ⏮ ▶ ⏭ | Previous part, play/pause, next part |
+| Meter | One cell per part; green once rendered |
+| `SAVE .WAV` | Appears when the whole thing is done |
+
+Keyboard: **Space** plays or pauses, **←** and **→** move between parts.
+
+Speed changes apply instantly, mid-sentence, and pitch stays natural.
+
+Saved files go to `output/`. Delete them any time.
 
 ## Speed
 
@@ -39,9 +52,10 @@ ahead of you.
 
 - **Kokoro-82M** — an open-weight (Apache 2.0) text-to-speech model. Small, and
   consistently rated at or near the top of open voice-quality comparisons.
-- Long text is cut into ~800-character chunks on paragraph and sentence
-  boundaries and rendered one at a time. Each chunk is playable the moment it
-  is done, so listening starts long before rendering finishes.
+- Text is cut one paragraph per chunk (splitting any paragraph longer than
+  ~800 characters on sentence boundaries). One paragraph per chunk keeps jump
+  targets small enough to be useful. Each chunk is playable the moment it is
+  done, so listening starts long before rendering finishes.
 - Audio is always rendered at 1× speed. The browser changes tempo during
   playback with `playbackRate` and `preservesPitch`, so moving the slider never
   triggers a re-render.

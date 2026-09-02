@@ -35,6 +35,7 @@ class Job:
     speed: float
     total: int
     chunks: list[bytes] = field(default_factory=list)
+    texts: list[str] = field(default_factory=list)
     state: str = "running"  # running | ready | error
     error: str = ""
     seconds: float = 0.0
@@ -124,10 +125,11 @@ def speak(request: SpeakRequest) -> dict:
         # speed slider never forces a re-render.
         speed=1.0,
         total=len(chunks),
+        texts=chunks,
     )
     JOBS[job.id] = job
     threading.Thread(target=_run_job, args=(job, request.text), daemon=True).start()
-    return job.snapshot()
+    return {**job.snapshot(), "texts": job.texts}
 
 
 @app.get("/progress/{job_id}")
