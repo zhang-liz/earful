@@ -24,8 +24,10 @@ To use a different port: `PORT=9000 ./run.sh`
    keeps rendering the rest while you listen.
 
 The article fills the middle, split into parts. The part being read is boxed
-and marked with a caret, and **each word lights up as it is spoken**. Click any
-part to jump straight to it.
+and marked with a caret, and **each word lights up as it is spoken**.
+
+**Click any word to start reading from there.** Clicking the space around the
+words starts from the top of that part.
 
 Controls live in the left sidebar:
 
@@ -64,6 +66,9 @@ ahead of you.
   are kept per part and served from `/words/<job>/<part>`; the page maps them
   onto its word spans and lights the one under the playhead each frame. Because
   the highlight follows `currentTime`, it tracks any playback speed for free.
+- The same map makes every word a seek target: clicking one seeks to its start
+  time. Within the loaded part that is an immediate seek; across parts the
+  target is held until the new source reports its metadata.
 - FastAPI serves the page, streams progress over SSE, and serves each chunk
   with HTTP range support (browsers stall on media without it).
 

@@ -183,6 +183,12 @@
   }
   /* The single word being spoken right now. */
   .w { padding: 1px 0; }
+  /* Any word is a seek target, so show it responds to the pointer. */
+  .w:hover {
+    background: var(--line);
+    box-shadow: 2px 0 0 var(--line), -2px 0 0 var(--line);
+  }
+  .part.pending .w:hover { background: transparent; box-shadow: none; }
   .part.now .w.lit {
     background: var(--amber);
     color: var(--shadow);
@@ -303,6 +309,7 @@ let playing = false;
 let stream = null;
 let waiting = false;   // playback caught up to rendering
 let started = false;   // has this job begun playing at all
+let pendingSeek = 0;   // where to resume once the new source has loaded
 
 /* ---------- text box ---------- */
 function refreshCount() {
@@ -362,7 +369,17 @@ function drawReader() {
         part.append(word);
       }
     }
-    part.addEventListener("click", () => jumpTo(i));
+    // A click on a word starts from that word; anywhere else in the part
+    // starts from its beginning.
+    part.addEventListener("click", (event) => {
+      const word = event.target.closest(".w");
+      if (word && part.contains(word)) {
+        const spans = [...part.querySelectorAll(".w")];
+        jumpToWord(i, spans.indexOf(word));
+      } else {
+        jumpTo(i);
+      }
+    });
     reader.append(part);
   });
   paintReader();
@@ -481,7 +498,7 @@ function setStatus() {
 }
 
 /* ---------- playback ---------- */
-function playChunk(i) {
+function playChunk(i, at = 0) {
   if (!job) return;
   if (i >= job.total) {                 // reached the end
     playing = false;
@@ -500,6 +517,10 @@ function playChunk(i) {
   index = i;
   player.src = `/chunk/${job.id}/${i}.wav`;
   player.playbackRate = Number(speed.value);
+  // The source has just changed, so any seek waits for metadata. Record the
+  // target instead of adding a listener per jump: a rapid second jump would
+  // otherwise leave an earlier listener pending and seek twice.
+  pendingSeek = at;
   player.play().catch(() => { playing = false; $("toggle").innerHTML = "&#9654;"; });
   startHighlight(i);
   setStatus();
@@ -508,13 +529,46 @@ function playChunk(i) {
   if (part) part.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
-function jumpTo(i) {
+function jumpTo(i, at = 0) {
   if (!job || i >= ready) return;       // not rendered yet
   started = true;
   playing = true;
   $("toggle").innerHTML = "&#10074;&#10074;";
-  playChunk(i);
+  // Seeking inside the part already loaded: move the playhead, keep the file.
+  if (i === index && player.src && player.readyState > 0) {
+    player.currentTime = at;
+    player.play().catch(() => {});
+    startHighlight(i);
+    setStatus();
+    return;
+  }
+  playChunk(i, at);
 }
+
+// Clicking a word starts playback from that word.
+async function jumpToWord(partIndex, spanIndex) {
+  if (!job || partIndex >= ready) return;
+  const words = await loadTimings(partIndex);
+  const part = $("reader").children[partIndex];
+  if (!words || !part) { jumpTo(partIndex); return; }
+
+  const spans = [...part.querySelectorAll(".w")];
+  const map = alignWords(spans, words);
+  // An unmapped word (rare) falls back to the nearest earlier mapped one.
+  let at = 0;
+  for (let s = spanIndex; s >= 0; s--) {
+    if (map[s]) { at = map[s].start; break; }
+  }
+  jumpTo(partIndex, at);
+}
+
+// A newly loaded part starts at whatever word was asked for.
+player.addEventListener("loadedmetadata", () => {
+  if (pendingSeek > 0) {
+    player.currentTime = pendingSeek;
+    pendingSeek = 0;
+  }
+});
 
 player.addEventListener("ended", () => {
   stopHighlight();
@@ -553,6 +607,7 @@ async function speak() {
   playing = false; waiting = false; started = false;
   stopHighlight();
   timings.clear();
+  pendingSeek = 0;
   $("error").classList.add("hidden");
   $("download").classList.add("hidden");
   $("toggle").innerHTML = "&#9654;";
