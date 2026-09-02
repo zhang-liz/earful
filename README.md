@@ -20,24 +20,33 @@ To use a different port: `PORT=9000 ./run.sh`
 
 1. Paste your text — an article, a chapter, anything. Length does not matter.
 2. Pick a voice. Press **Hear this voice** to sample one first.
-3. Press **Read it to me**.
-4. Play it in the page, or press **Download the audio file** to keep it.
+3. Press **Read it to me**. It starts reading after a couple of seconds and
+   keeps rendering the rest while you listen.
 
-Audio files are saved in `output/`. Delete them any time.
+Drag the **Speed** slider at any time, including mid-sentence — it takes effect
+straight away and the pitch stays natural. Press **Space** to play or pause.
+**Download** appears once the whole thing has rendered, if you want to keep it.
+
+Downloaded files are saved in `output/`. Delete them any time.
 
 ## Speed
 
-Roughly 13× faster than real time on an M-series Mac. A 30-minute article takes
-about 2 minutes to render.
+Playback begins about 2 seconds after you press the button, whatever the length.
+Rendering runs at roughly 13× real time on an M-series Mac, so it stays well
+ahead of you.
 
 ## How it works
 
 - **Kokoro-82M** — an open-weight (Apache 2.0) text-to-speech model. Small, and
   consistently rated at or near the top of open voice-quality comparisons.
 - Long text is cut into ~800-character chunks on paragraph and sentence
-  boundaries, rendered one at a time, then joined with a short pause between
-  each. This keeps prosody natural and lets the progress bar move.
-- FastAPI serves the page and streams progress to the browser over SSE.
+  boundaries and rendered one at a time. Each chunk is playable the moment it
+  is done, so listening starts long before rendering finishes.
+- Audio is always rendered at 1× speed. The browser changes tempo during
+  playback with `playbackRate` and `preservesPitch`, so moving the slider never
+  triggers a re-render.
+- FastAPI serves the page, streams progress over SSE, and serves each chunk
+  with HTTP range support (browsers stall on media without it).
 
 ## Requirements
 

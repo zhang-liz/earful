@@ -13,24 +13,21 @@
     --muted: #6b6862;
     --line: #e4e1db;
     --accent: #b4531f;
-    --accent-soft: #fdf0e7;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #16151300;
       --bg: #161513;
       --panel: #1f1e1b;
       --ink: #f2efe9;
       --muted: #a09c94;
       --line: #33302b;
       --accent: #e8874a;
-      --accent-soft: #2b2119;
     }
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    padding: 32px 20px 64px;
+    padding: 32px 20px 120px;
     background: var(--bg);
     color: var(--ink);
     font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
@@ -48,7 +45,7 @@
   label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
   textarea {
     width: 100%;
-    min-height: 260px;
+    min-height: 240px;
     resize: vertical;
     padding: 14px;
     border: 1px solid var(--line);
@@ -57,13 +54,13 @@
     color: var(--ink);
     font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
   }
-  textarea:focus, select:focus, button:focus-visible {
+  textarea:focus, select:focus, button:focus-visible, input:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 1px;
   }
   .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
   .field { flex: 1 1 200px; }
-  select, input[type=range] {
+  select {
     width: 100%;
     padding: 9px 10px;
     border: 1px solid var(--line);
@@ -72,7 +69,7 @@
     color: var(--ink);
     font: inherit;
   }
-  input[type=range] { padding: 0; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
   button {
     border: 0;
     border-radius: 9px;
@@ -82,25 +79,38 @@
     color: #fff;
     cursor: pointer;
   }
-  button.ghost {
-    background: transparent;
-    color: var(--accent);
-    border: 1px solid var(--accent);
-  }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
   button:disabled { opacity: 0.45; cursor: not-allowed; }
   .meta { color: var(--muted); font-size: 13px; display: flex; justify-content: space-between; gap: 12px; }
-  .bar { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 12px 0 8px; }
+
+  /* The player stays on screen while you scroll the text. */
+  .dock {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+    padding: 14px 20px;
+    box-shadow: 0 -6px 24px rgba(0,0,0,.07);
+  }
+  .dock .inner { max-width: 780px; margin: 0 auto; }
+  .controls { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .play {
+    width: 46px; height: 46px; border-radius: 50%;
+    display: grid; place-items: center; font-size: 17px; padding: 0; flex: none;
+  }
+  .speed { flex: 1 1 240px; min-width: 200px; }
+  .speed-head { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .bar { height: 6px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 10px 0 6px; }
   .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s ease; }
-  audio { width: 100%; margin-top: 8px; }
   .hidden { display: none; }
-  .error { color: #c0392b; font-size: 13px; }
+  .error { color: #c0392b; font-size: 13px; margin: 6px 0 0; }
   a.download { color: var(--accent); font-size: 13px; font-weight: 600; }
 </style>
 </head>
 <body>
 <main>
   <h1>Read It To Me</h1>
-  <p class="sub">Paste anything. Pick a voice. Get an audio file.</p>
+  <p class="sub">Paste anything. It starts reading in a couple of seconds.</p>
 
   <div class="panel">
     <label for="text">Your text</label>
@@ -114,30 +124,52 @@
         <label for="voice">Voice</label>
         <select id="voice"></select>
       </div>
-      <div class="field">
-        <label for="speed">Speed · <span id="speedLabel">1.00×</span></label>
-        <input id="speed" type="range" min="0.5" max="2" step="0.05" value="1" />
+      <div class="field" style="flex:0 0 auto">
+        <button id="go">Read it to me</button>
+        <button id="sample" class="ghost">Hear this voice</button>
       </div>
     </div>
-    <div class="row" style="margin-top:14px">
-      <button id="go">Read it to me</button>
-      <button id="sample" class="ghost">Hear this voice</button>
-    </div>
-  </div>
-
-  <div class="panel hidden" id="result">
-    <div class="meta"><span id="status">Starting…</span><span id="elapsed"></span></div>
-    <div class="bar"><i id="fill"></i></div>
-    <audio id="player" controls class="hidden"></audio>
-    <a id="download" class="download hidden" download>Download the audio file</a>
     <p id="error" class="error hidden"></p>
   </div>
 </main>
 
+<div class="dock hidden" id="dock">
+  <div class="inner">
+    <div class="controls">
+      <button class="play" id="toggle" title="Play or pause">▶</button>
+      <div class="speed">
+        <div class="speed-head">
+          <label for="speed" style="margin:0">Speed</label>
+          <span id="speedLabel">1.00×</span>
+        </div>
+        <input id="speed" type="range" min="0.5" max="3" step="0.05" value="1" />
+      </div>
+      <a id="download" class="download hidden" download>Download</a>
+    </div>
+    <div class="bar"><i id="fill"></i></div>
+    <div class="meta"><span id="status">Getting ready…</span><span id="clock"></span></div>
+  </div>
+</div>
+
 <script>
 const $ = (id) => document.getElementById(id);
 const text = $("text"), voice = $("voice"), speed = $("speed");
+
+// One <audio> element per chunk, played back to back. Swapping elements at a
+// chunk boundary is what lets playback start before rendering has finished.
+const player = new Audio();
+player.preservesPitch = true;      // speed up without chipmunk voice
+player.mozPreservesPitch = true;
+player.webkitPreservesPitch = true;
+window.player = player;            // handy from the console
+
+let job = null;        // { id, total }
+let ready = 0;         // chunks the server has finished
+let index = 0;         // chunk we are playing now
+let playing = false;
 let stream = null;
+let waiting = false;   // playback caught up to rendering
+let started = false;   // has this job begun playing at all
 
 function refreshCount() {
   const value = text.value.trim();
@@ -145,7 +177,9 @@ function refreshCount() {
   $("count").textContent = `${words.toLocaleString()} words · ${text.value.length.toLocaleString()} characters`;
   // Kokoro narrates at roughly 150 words per minute at 1x.
   const minutes = words / (150 * Number(speed.value));
-  $("estimate").textContent = words ? `about ${minutes < 1 ? "under a minute" : Math.round(minutes) + " min"} of audio` : "";
+  $("estimate").textContent = words
+    ? `about ${minutes < 1 ? "under a minute" : Math.round(minutes) + " min"} of listening`
+    : "";
 }
 
 async function loadVoices() {
@@ -159,27 +193,92 @@ async function loadVoices() {
   voice.value = data.default;
 }
 
-function setBusy(busy) {
-  $("go").disabled = busy;
-  $("sample").disabled = busy;
+function applySpeed() {
+  const rate = Number(speed.value);
+  player.playbackRate = rate;
+  $("speedLabel").textContent = `${rate.toFixed(2)}×`;
+  refreshCount();
+}
+
+function setStatus() {
+  if (!job) return;
+  if (waiting) {
+    $("status").textContent = "Catching up with the reader…";
+  } else if (playing) {
+    $("status").textContent = `Reading part ${index + 1} of ${job.total}`;
+  } else if (index >= job.total) {
+    $("status").textContent = "Finished";
+  } else {
+    $("status").textContent = "Paused";
+  }
+  $("clock").textContent = ready < job.total ? `${ready} of ${job.total} parts ready` : "all parts ready";
+  $("fill").style.width = `${(ready / job.total) * 100}%`;
+}
+
+function playChunk(i) {
+  if (!job) return;
+  if (i >= job.total) {          // reached the end
+    playing = false;
+    $("toggle").textContent = "▶";
+    index = job.total;
+    setStatus();
+    return;
+  }
+  if (i >= ready) {              // rendering has not caught up yet
+    waiting = true;
+    setStatus();
+    return;
+  }
+  waiting = false;
+  index = i;
+  player.src = `/chunk/${job.id}/${i}.wav`;
+  player.playbackRate = Number(speed.value);
+  player.play().catch(() => { playing = false; $("toggle").textContent = "▶"; });
+  setStatus();
+}
+
+player.addEventListener("ended", () => { if (playing) playChunk(index + 1); });
+
+function toggle() {
+  if (!job) return;
+  if (playing) {
+    player.pause();
+    playing = false;
+    $("toggle").textContent = "▶";
+    setStatus();
+    return;
+  }
+  playing = true;
+  $("toggle").textContent = "❚❚";
+  if (started && !player.ended && player.currentTime > 0) {
+    player.play().catch(() => {});   // resume mid-chunk
+    setStatus();
+  } else {
+    started = true;
+    playChunk(index);
+  }
 }
 
 async function speak() {
   if (!text.value.trim()) { text.focus(); return; }
-  if (stream) stream.close();
-  setBusy(true);
-  $("result").classList.remove("hidden");
-  $("player").classList.add("hidden");
-  $("download").classList.add("hidden");
+  if (stream) { stream.close(); stream = null; }
+  player.pause();
+
+  job = null; ready = 0; index = 0; playing = false; waiting = false; started = false;
   $("error").classList.add("hidden");
+  $("download").classList.add("hidden");
+  $("dock").classList.remove("hidden");
   $("fill").style.width = "0";
-  $("status").textContent = "Warming up the voice…";
+  $("status").textContent = "Getting ready…";
+  $("toggle").textContent = "▶";
+  $("go").disabled = true;
 
   const response = await fetch("/speak", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: text.value, voice: voice.value, speed: Number(speed.value) })
+    body: JSON.stringify({ text: text.value, voice: voice.value })
   });
+  $("go").disabled = false;
 
   if (!response.ok) {
     const detail = await response.json().catch(() => ({ detail: response.statusText }));
@@ -187,64 +286,72 @@ async function speak() {
     return;
   }
 
-  const job = await response.json();
+  job = await response.json();
   stream = new EventSource(`/progress/${job.id}`);
   stream.onmessage = (event) => {
     const update = JSON.parse(event.data);
-    const percent = update.total ? (update.done / update.total) * 100 : 0;
-    $("fill").style.width = `${percent}%`;
-    $("elapsed").textContent = `${update.elapsed}s elapsed`;
+    ready = update.done;
 
-    if (update.state === "running") {
-      $("status").textContent = update.done
-        ? `Reading part ${update.done} of ${update.total}…`
-        : "Warming up the voice…";
-    } else if (update.state === "ready") {
-      stream.close(); stream = null; setBusy(false);
-      $("fill").style.width = "100%";
-      $("status").textContent = `Done — ${Math.round(update.seconds / 60)} min ${Math.round(update.seconds % 60)} s of audio`;
-      const player = $("player");
-      player.src = update.url;
-      player.classList.remove("hidden");
+    // Start as soon as the first chunk exists; resume if we ran dry.
+    if (ready > 0 && !started) {
+      started = true;
+      playing = true;
+      $("toggle").textContent = "❚❚";
+      playChunk(0);
+    } else if (waiting && ready > index) {
+      playChunk(index);
+    }
+
+    if (update.state === "ready") {
+      stream.close(); stream = null;
       const link = $("download");
-      link.href = update.url;
+      link.href = `/download/${job.id}.wav`;
       link.classList.remove("hidden");
     } else if (update.state === "error") {
       stream.close(); stream = null;
       fail(update.error);
+      return;
     }
+    setStatus();
   };
-  stream.onerror = () => { if (stream) { stream.close(); stream = null; } setBusy(false); };
+  stream.onerror = () => { if (stream) { stream.close(); stream = null; } };
 }
 
 function fail(message) {
-  setBusy(false);
+  $("go").disabled = false;
   $("status").textContent = "Stopped";
   $("error").textContent = message;
   $("error").classList.remove("hidden");
 }
 
 async function sample() {
-  setBusy(true);
+  $("sample").disabled = true;
   const line = "This is how I sound. I can read your whole article in this voice, start to finish.";
   const response = await fetch("/preview", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: line, voice: voice.value, speed: Number(speed.value) })
+    body: JSON.stringify({ text: line, voice: voice.value })
   });
-  setBusy(false);
+  $("sample").disabled = false;
   if (!response.ok) return;
-  const url = URL.createObjectURL(await response.blob());
-  new Audio(url).play();
+  const audio = new Audio(URL.createObjectURL(await response.blob()));
+  audio.preservesPitch = true;
+  audio.playbackRate = Number(speed.value);
+  audio.play();
 }
 
 text.addEventListener("input", refreshCount);
-speed.addEventListener("input", () => {
-  $("speedLabel").textContent = `${Number(speed.value).toFixed(2)}×`;
-  refreshCount();
-});
+speed.addEventListener("input", applySpeed);
+$("toggle").addEventListener("click", toggle);
 $("go").addEventListener("click", speak);
 $("sample").addEventListener("click", sample);
+// Space toggles playback, unless you are typing in the box.
+document.addEventListener("keydown", (event) => {
+  if (event.code === "Space" && event.target !== text && job) {
+    event.preventDefault();
+    toggle();
+  }
+});
 loadVoices();
 refreshCount();
 </script>
