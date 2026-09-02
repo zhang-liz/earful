@@ -154,6 +154,23 @@ class Progress:
     text: str
 
 
+@dataclass
+class Word:
+    """One spoken word, timed from the start of its chunk."""
+
+    text: str
+    start: float
+    end: float
+
+
+@dataclass
+class Segment:
+    """A piece of rendered audio plus the words heard in it."""
+
+    audio: np.ndarray
+    words: list[Word]
+
+
 class Engine:
     """Lazily loads one Kokoro pipeline per language code and reuses it."""
 
@@ -181,9 +198,12 @@ class Engine:
         on_progress: Callable[[Progress], None] | None = None,
     ) -> np.ndarray:
         """Render the whole text to one audio array, chunk by chunk."""
-        pieces = list(
-            self.stream(text, voice=voice, speed=speed, on_progress=on_progress)
-        )
+        pieces = [
+            segment.audio
+            for segment in self.stream(
+                text, voice=voice, speed=speed, on_progress=on_progress
+            )
+        ]
         if not pieces:
             return np.zeros(0, dtype=np.float32)
         return np.concatenate(pieces)
@@ -194,7 +214,7 @@ class Engine:
         voice: str = DEFAULT_VOICE,
         speed: float = 1.0,
         on_progress: Callable[[Progress], None] | None = None,
-    ) -> Iterator[np.ndarray]:
+    ) -> Iterator["Segment"]:
         """Yield audio one chunk at a time, with a short pause between chunks."""
         chunks = chunk(text)
         if not chunks:
@@ -204,15 +224,34 @@ class Engine:
         gap = np.zeros(int(SAMPLE_RATE * 0.25), dtype=np.float32)
 
         for index, piece in enumerate(chunks, start=1):
-            audio_parts = [
-                result.audio.detach().cpu().numpy().astype(np.float32)
-                for result in pipeline(piece, voice=voice, speed=speed)
-                if result.audio is not None
-            ]
+            audio_parts: list[np.ndarray] = []
+            words: list[Word] = []
+            offset = 0.0  # seconds of audio already emitted for this chunk
+
+            for result in pipeline(piece, voice=voice, speed=speed):
+                if result.audio is None:
+                    continue
+                audio = result.audio.detach().cpu().numpy().astype(np.float32)
+                # Kokoro times each token from the start of its own result, so
+                # shift them by the audio already produced for this chunk.
+                for token in getattr(result, "tokens", None) or []:
+                    start, end = token.start_ts, token.end_ts
+                    if start is None or end is None or not token.text.strip():
+                        continue
+                    words.append(
+                        Word(
+                            text=token.text,
+                            start=float(start) + offset,
+                            end=float(end) + offset,
+                        )
+                    )
+                audio_parts.append(audio)
+                offset += len(audio) / SAMPLE_RATE
+
             if audio_parts:
-                yield np.concatenate(audio_parts)
+                yield Segment(audio=np.concatenate(audio_parts), words=words)
                 if index < len(chunks):
-                    yield gap
+                    yield Segment(audio=gap, words=[])
             if on_progress:
                 on_progress(Progress(done=index, total=len(chunks), text=piece))
 

@@ -181,6 +181,14 @@
     border-color: var(--amber);
     box-shadow: 3px 3px 0 var(--shadow);
   }
+  /* The single word being spoken right now. */
+  .w { padding: 1px 0; }
+  .part.now .w.lit {
+    background: var(--amber);
+    color: var(--shadow);
+    box-shadow: 2px 0 0 var(--amber), -2px 0 0 var(--amber);
+  }
+
   /* A blinking caret marks the part being spoken. */
   .part.now::before {
     content: "\25B6";
@@ -340,12 +348,103 @@ function drawReader() {
   job.texts.forEach((body, i) => {
     const part = document.createElement("button");
     part.className = "part";
-    part.textContent = body;
     part.dataset.i = i;
+    // One span per word, so a single word can be lit while it is spoken.
+    // Whitespace between words is kept as plain text to preserve wrapping.
+    for (const piece of body.split(/(\s+)/)) {
+      if (!piece) continue;
+      if (/^\s+$/.test(piece)) {
+        part.append(piece);
+      } else {
+        const word = document.createElement("span");
+        word.className = "w";
+        word.textContent = piece;
+        part.append(word);
+      }
+    }
     part.addEventListener("click", () => jumpTo(i));
     reader.append(part);
   });
   paintReader();
+}
+
+/* ---------- word-by-word highlight ---------- */
+// Timings arrive per part: [{t: "word", s: startSec, e: endSec}, ...]
+const timings = new Map();   // part index -> word list
+let litWord = -1;            // span index currently lit
+let raf = null;
+
+async function loadTimings(i) {
+  if (timings.has(i)) return timings.get(i);
+  try {
+    const response = await fetch(`/words/${job.id}/${i}`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    timings.set(i, data.words);
+    return data.words;
+  } catch { return null; }
+}
+
+// Kokoro emits a token per word AND per punctuation mark, while the reader
+// makes a span per whitespace-separated word. Map one to the other by walking
+// both in order and matching on letters only.
+function alignWords(spans, words) {
+  const clean = (s) => s.toLowerCase().replace(/[^a-z0-9']/g, "");
+  const map = new Array(spans.length).fill(null);
+  let w = 0;
+  for (let s = 0; s < spans.length; s++) {
+    const target = clean(spans[s].textContent);
+    if (!target) continue;
+    let built = "";
+    const startWord = w;
+    while (w < words.length) {
+      built += clean(words[w].t);
+      w++;
+      if (built === target) {                       // one or more tokens = one span
+        map[s] = { start: words[startWord].s, end: words[w - 1].e };
+        break;
+      }
+      if (built.length > target.length) {           // drifted; resync
+        w = startWord + 1;
+        break;
+      }
+    }
+  }
+  return map;
+}
+
+function stopHighlight() {
+  if (raf) { cancelAnimationFrame(raf); raf = null; }
+  document.querySelectorAll(".w.lit").forEach((el) => el.classList.remove("lit"));
+  litWord = -1;
+}
+
+async function startHighlight(i) {
+  stopHighlight();
+  const words = await loadTimings(i);
+  const part = $("reader").children[i];
+  if (!words || !part || index !== i) return;
+
+  const spans = [...part.querySelectorAll(".w")];
+  const map = alignWords(spans, words);
+
+  const tick = () => {
+    if (!playing || index !== i) { raf = null; return; }
+    const now = player.currentTime;
+    // Find the span whose window contains the playhead.
+    let found = -1;
+    for (let s = 0; s < map.length; s++) {
+      const span = map[s];
+      if (span && now >= span.start && now < span.end) { found = s; break; }
+    }
+    if (found !== litWord) {
+      if (litWord >= 0 && spans[litWord]) spans[litWord].classList.remove("lit");
+      if (found >= 0 && spans[found]) spans[found].classList.add("lit");
+      litWord = found;
+    }
+    raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
 }
 
 function paintReader() {
@@ -402,6 +501,7 @@ function playChunk(i) {
   player.src = `/chunk/${job.id}/${i}.wav`;
   player.playbackRate = Number(speed.value);
   player.play().catch(() => { playing = false; $("toggle").innerHTML = "&#9654;"; });
+  startHighlight(i);
   setStatus();
   // Keep the spoken part in view without yanking the page around.
   const part = $("reader").children[i];
@@ -416,13 +516,17 @@ function jumpTo(i) {
   playChunk(i);
 }
 
-player.addEventListener("ended", () => { if (playing) playChunk(index + 1); });
+player.addEventListener("ended", () => {
+  stopHighlight();
+  if (playing) playChunk(index + 1);
+});
 
 function toggle() {
   if (!job) return;
   if (playing) {
     player.pause();
     playing = false;
+    if (raf) { cancelAnimationFrame(raf); raf = null; }
     $("toggle").innerHTML = "&#9654;";
     setStatus();
     return;
@@ -431,6 +535,7 @@ function toggle() {
   $("toggle").innerHTML = "&#10074;&#10074;";
   if (started && !player.ended && player.currentTime > 0) {
     player.play().catch(() => {});      // resume mid-part
+    startHighlight(index);
     setStatus();
   } else {
     started = true;
@@ -446,6 +551,8 @@ async function speak() {
 
   job = null; ready = 0; index = 0;
   playing = false; waiting = false; started = false;
+  stopHighlight();
+  timings.clear();
   $("error").classList.add("hidden");
   $("download").classList.add("hidden");
   $("toggle").innerHTML = "&#9654;";

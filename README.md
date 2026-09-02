@@ -24,7 +24,8 @@ To use a different port: `PORT=9000 ./run.sh`
    keeps rendering the rest while you listen.
 
 The article fills the middle, split into parts. The part being read is boxed
-and marked with a caret. **Click any part to jump straight to it.**
+and marked with a caret, and **each word lights up as it is spoken**. Click any
+part to jump straight to it.
 
 Controls live in the left sidebar:
 
@@ -59,6 +60,10 @@ ahead of you.
 - Audio is always rendered at 1× speed. The browser changes tempo during
   playback with `playbackRate` and `preservesPitch`, so moving the slider never
   triggers a re-render.
+- Kokoro reports a start and end time for every token it speaks. Those timings
+  are kept per part and served from `/words/<job>/<part>`; the page maps them
+  onto its word spans and lights the one under the playhead each frame. Because
+  the highlight follows `currentTime`, it tracks any playback speed for free.
 - FastAPI serves the page, streams progress over SSE, and serves each chunk
   with HTTP range support (browsers stall on media without it).
 

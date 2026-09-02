@@ -25,6 +25,9 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 
 app = FastAPI(title="TTS Reader")
 
+# Silence inserted between parts, in seconds.
+GAP_SECONDS = 0.25
+
 
 @dataclass
 class Job:
@@ -36,6 +39,7 @@ class Job:
     total: int
     chunks: list[bytes] = field(default_factory=list)
     texts: list[str] = field(default_factory=list)
+    words: list[list[dict]] = field(default_factory=list)
     state: str = "running"  # running | ready | error
     error: str = ""
     seconds: float = 0.0
@@ -80,12 +84,21 @@ def _to_wav(audio: np.ndarray) -> bytes:
 
 def _run_job(job: Job, text: str) -> None:
     try:
-        for piece in engine.stream(text, voice=job.voice, speed=job.speed):
-            # The engine yields silence between chunks; keep it with the
-            # chunk before it so the browser plays one file per chunk.
+        for segment in engine.stream(text, voice=job.voice, speed=job.speed):
+            if not segment.words:
+                # The pause between chunks. It is not a part of its own, and
+                # dropping it would run the paragraphs together, so it is left
+                # for the browser to supply as a gap between parts.
+                continue
             with job.lock:
-                job.chunks.append(_to_wav(piece))
-                job.seconds += len(piece) / SAMPLE_RATE
+                job.chunks.append(_to_wav(segment.audio))
+                job.words.append(
+                    [
+                        {"t": w.text, "s": round(w.start, 3), "e": round(w.end, 3)}
+                        for w in segment.words
+                    ]
+                )
+                job.seconds += len(segment.audio) / SAMPLE_RATE
             job.publish()
         job.state = "ready"
     except Exception as exc:  # surfaced to the browser, not swallowed
@@ -208,6 +221,18 @@ def chunk_audio(job_id: str, index: int, request: Request) -> Response:
     return _range_response(data, request.headers.get("range"))
 
 
+@app.get("/words/{job_id}/{index}")
+def chunk_words(job_id: str, index: int) -> dict:
+    """Word timings for one part, so the reader can follow along."""
+    job = JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown job.")
+    with job.lock:
+        if index >= len(job.words):
+            raise HTTPException(status_code=404, detail="Part not ready.")
+        return {"index": index, "words": job.words[index]}
+
+
 @app.get("/download/{job_id}.wav")
 def download(job_id: str) -> FileResponse:
     """Join every chunk into one file, for keeping."""
@@ -221,7 +246,14 @@ def download(job_id: str) -> FileResponse:
     if not path.exists():
         with job.lock:
             parts = [sf.read(io.BytesIO(c), dtype="float32")[0] for c in job.chunks]
-        sf.write(path, np.concatenate(parts), SAMPLE_RATE)
+        # Put back the pause the player leaves between parts.
+        gap = np.zeros(int(SAMPLE_RATE * GAP_SECONDS), dtype="float32")
+        joined: list[np.ndarray] = []
+        for i, part in enumerate(parts):
+            joined.append(part)
+            if i < len(parts) - 1:
+                joined.append(gap)
+        sf.write(path, np.concatenate(joined), SAMPLE_RATE)
     return FileResponse(path, media_type="audio/wav", filename=f"narration-{job_id}.wav")
 
 
