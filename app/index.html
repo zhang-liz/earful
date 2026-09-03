@@ -833,6 +833,41 @@ player.addEventListener("ended", () => {
   if (playing) playChunk(index + 1);
 });
 
+/**
+ * Tell the server where this reading has got to, so a phone can take over.
+ *
+ * About once a second while sound is actually coming out. Failure is ignored
+ * on purpose: handing over is a convenience and must never interrupt the
+ * reading that is happening here.
+ */
+let handedOff = 0;
+
+function handOff(force) {
+  if (!job) return;
+  const stamp = Date.now();
+  if (!force && stamp - handedOff < 1000) return;
+  handedOff = stamp;
+
+  fetch("/handoff", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      job: job.id,
+      index,
+      at: player.currentTime || 0,
+      title: (text.value.trim().split("\n")[0] || "Your reading").slice(0, 80),
+    }),
+  }).catch(() => { /* handing over is optional */ });
+}
+
+player.addEventListener("timeupdate", () => {
+  if (playing) handOff(false);
+});
+
+// Also sent the moment a reading exists, so picking up the phone works
+// without having to press play on the computer first.
+player.addEventListener("loadeddata", () => handOff(true));
+
 function toggle() {
   if (!job || editing) return;
   if (playing) {
@@ -938,6 +973,10 @@ async function speak() {
 
   job = await response.json();
   rememberJob();
+  // Offer it to the phone straight away. Waiting for playback would mean a
+  // reading the computer never started could not be picked up at all, and
+  // browsers routinely refuse to start one without a click.
+  handOff(true);
   $("inputBox").classList.add("hidden");
   $("readerBox").classList.remove("hidden");
   drawReader();
@@ -988,6 +1027,7 @@ async function restoreJob() {
   } catch { /* the stream below will fill this in */ }
 
   setStatus();
+  handOff(true);
   listenForParts(false);
 }
 
