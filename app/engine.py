@@ -14,13 +14,13 @@ SAMPLE_RATE = 24000
 # Kokoro voices, grouped by the language code its pipeline needs.
 VOICES: dict[str, list[tuple[str, str]]] = {
     "a": [
+        ("am_michael", "Michael — US male, warm"),
         ("af_heart", "Heart — US female, warmest overall"),
         ("af_bella", "Bella — US female, expressive"),
         ("af_nicole", "Nicole — US female, soft/ASMR"),
         ("af_aoede", "Aoede — US female, calm"),
         ("af_kore", "Kore — US female, clear"),
         ("af_sarah", "Sarah — US female, bright"),
-        ("am_michael", "Michael — US male, warm"),
         ("am_fenrir", "Fenrir — US male, deep"),
         ("am_puck", "Puck — US male, lively"),
         ("am_adam", "Adam — US male, neutral"),
@@ -34,7 +34,7 @@ VOICES: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
-DEFAULT_VOICE = "af_heart"
+DEFAULT_VOICE = "am_michael"
 
 # Splitting a chunk: try paragraph breaks, then sentence ends, then any space.
 _PARAGRAPH_SPLIT = re.compile(r"\n\s*\n")
