@@ -53,6 +53,12 @@ and marked with a caret, and **each word lights up as it is spoken**.
 **Click any word to start reading from there.** Clicking the space around the
 words starts from the top of that part.
 
+**Double-click a paragraph to edit it where it sits.** Enter saves,
+Shift+Enter adds a line, Escape cancels, and clicking away keeps what you
+typed. Only the edited paragraph is re-recorded, which takes a second or two.
+`REPLACE ALL TEXT` at the bottom is for starting over with a whole new
+document.
+
 Controls live in the left sidebar:
 
 | Control | What it does |
@@ -93,6 +99,9 @@ ahead of you.
 - The same map makes every word a seek target: clicking one seeks to its start
   time. Within the loaded part that is an immediate seek; across parts the
   target is held until the new source reports its metadata.
+- Editing a paragraph posts it to `/revoice/<job>/<part>`, which re-renders
+  that part alone and swaps its audio, word timings and text in place. The
+  joined download file is deleted so it is rebuilt with the new audio.
 - FastAPI serves the page, streams progress over SSE, and serves each chunk
   with HTTP range support (browsers stall on media without it).
 

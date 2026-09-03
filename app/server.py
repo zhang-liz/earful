@@ -185,6 +185,56 @@ def speak(request: SpeakRequest) -> dict:
     return {**job.snapshot(), "texts": job.texts}
 
 
+class ReviceRequest(BaseModel):
+    text: str = Field(min_length=1)
+
+
+@app.post("/revoice/{job_id}/{index}")
+def revoice(job_id: str, index: int, request: ReviceRequest) -> dict:
+    """Re-render one part after its text was edited in the reader."""
+    job = JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown job.")
+    if not 0 <= index < job.total:
+        raise HTTPException(status_code=404, detail="No such part.")
+
+    body = request.text.strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="No readable text.")
+
+    # An edit can outgrow one chunk; speak only the first, so a part stays a
+    # part. The rest is preserved in the text and read back on the next run.
+    pieces = chunk(body)
+    spoken = pieces[0] if pieces else body
+
+    audio_parts: list[np.ndarray] = []
+    words: list[dict] = []
+    offset = 0.0
+    for segment in engine.stream(spoken, voice=job.voice, speed=job.speed):
+        if not segment.words:
+            continue
+        audio_parts.append(segment.audio)
+        words.extend(
+            {"t": w.text, "s": round(w.start + offset, 3), "e": round(w.end + offset, 3)}
+            for w in segment.words
+        )
+        offset += len(segment.audio) / SAMPLE_RATE
+
+    if not audio_parts:
+        raise HTTPException(status_code=400, detail="Nothing to say.")
+
+    audio = np.concatenate(audio_parts)
+    with job.lock:
+        job.chunks[index] = _to_wav(audio)
+        job.words[index] = words
+        job.texts[index] = body
+        # The joined file is stale now; rebuild it on the next download.
+        stale = OUTPUT_DIR / f"{job_id}.wav"
+    stale.unlink(missing_ok=True)
+
+    return {"index": index, "seconds": round(len(audio) / SAMPLE_RATE, 2)}
+
+
 @app.get("/progress/{job_id}")
 def progress(job_id: str) -> StreamingResponse:
     job = JOBS.get(job_id)

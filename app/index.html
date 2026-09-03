@@ -200,6 +200,36 @@
     box-shadow: 2px 0 0 var(--amber), -2px 0 0 var(--amber);
   }
 
+  /* Editing one paragraph in place. */
+  .part.editing {
+    background: var(--panel-2);
+    border-color: var(--line);
+    cursor: default;
+    padding: 10px;
+  }
+  .edit-box {
+    width: 100%;
+    min-height: 90px;
+    resize: vertical;
+    padding: 10px;
+    background: var(--bg);
+    color: var(--ink);
+    border: 2px solid var(--amber);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13.5px;
+    line-height: 1.85;
+  }
+  .edit-box:focus-visible { outline: none; }
+  .edit-help {
+    font-family: "Press Start 2P", monospace;
+    font-size: 7px;
+    color: var(--muted);
+    margin: 7px 0 0;
+    line-height: 1.8;
+  }
+  /* While the new audio is being made, dim the paragraph. */
+  .part.revoicing { opacity: .55; }
+
   /* A blinking caret marks the part being spoken. */
   .part.now::before {
     content: "\25B6";
@@ -332,10 +362,10 @@
     </div>
 
     <div class="box hidden" id="readerBox">
-      <p class="legend">// NOW READING &mdash; CLICK ANY PART TO JUMP</p>
+      <p class="legend">// CLICK A WORD TO JUMP &mdash; DOUBLE-CLICK TO EDIT</p>
       <div class="reader" id="reader"></div>
       <div style="height:12px"></div>
-      <button id="edit">&#9664; EDIT TEXT</button>
+      <button id="edit">&#9664; REPLACE ALL TEXT</button>
     </div>
   </main>
 </div>
@@ -401,40 +431,172 @@ function setSpeed(value) {
 }
 
 /* ---------- the article ---------- */
+// One span per word, so a single word can be lit while it is spoken.
+// Whitespace between words is kept as plain text to preserve wrapping.
+function fillWords(part, body) {
+  part.textContent = "";
+  for (const piece of body.split(/(\s+)/)) {
+    if (!piece) continue;
+    if (/^\s+$/.test(piece)) {
+      part.append(piece);
+    } else {
+      const word = document.createElement("span");
+      word.className = "w";
+      word.textContent = piece;
+      part.append(word);
+    }
+  }
+}
+
+function makePart(body, i) {
+  const part = document.createElement("div");
+  part.className = "part";
+  part.dataset.i = i;
+  part.tabIndex = 0;
+  part.setAttribute("role", "button");
+  fillWords(part, body);
+
+  // A click on a word starts from that word; anywhere else in the part
+  // starts from its beginning.
+  part.addEventListener("click", (event) => {
+    if (part.classList.contains("editing")) return;
+    const word = event.target.closest(".w");
+    if (word && part.contains(word)) {
+      const spans = [...part.querySelectorAll(".w")];
+      jumpToWord(i, spans.indexOf(word));
+    } else {
+      jumpTo(i);
+    }
+  });
+
+  // Double-click (or Enter) edits this paragraph where it sits.
+  part.addEventListener("dblclick", () => editPart(i));
+  part.addEventListener("keydown", (event) => {
+    // Enter inside the editor saves; it must not bubble up here and reopen it.
+    if (event.target !== part) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      editPart(i);
+    }
+  });
+  return part;
+}
+
 function drawReader() {
   const reader = $("reader");
   reader.textContent = "";
-  job.texts.forEach((body, i) => {
-    const part = document.createElement("button");
-    part.className = "part";
-    part.dataset.i = i;
-    // One span per word, so a single word can be lit while it is spoken.
-    // Whitespace between words is kept as plain text to preserve wrapping.
-    for (const piece of body.split(/(\s+)/)) {
-      if (!piece) continue;
-      if (/^\s+$/.test(piece)) {
-        part.append(piece);
-      } else {
-        const word = document.createElement("span");
-        word.className = "w";
-        word.textContent = piece;
-        part.append(word);
-      }
-    }
-    // A click on a word starts from that word; anywhere else in the part
-    // starts from its beginning.
-    part.addEventListener("click", (event) => {
-      const word = event.target.closest(".w");
-      if (word && part.contains(word)) {
-        const spans = [...part.querySelectorAll(".w")];
-        jumpToWord(i, spans.indexOf(word));
-      } else {
-        jumpTo(i);
-      }
-    });
-    reader.append(part);
-  });
+  job.texts.forEach((body, i) => reader.append(makePart(body, i)));
   paintReader();
+}
+
+/* ---------- editing a paragraph in place ---------- */
+let editing = -1;   // part being edited, or -1
+
+function editPart(i) {
+  if (editing === i || !job) return;
+  if (editing >= 0) cancelEdit();          // only one at a time
+
+  const part = $("reader").children[i];
+  if (!part) return;
+
+  player.pause();
+  playing = false;
+  $("toggle").innerHTML = "&#9654;";
+  stopHighlight();
+
+  editing = i;
+  part.classList.add("editing");
+  part.textContent = "";
+
+  const box = document.createElement("textarea");
+  box.className = "edit-box";
+  box.value = job.texts[i];
+  box.rows = Math.max(2, Math.ceil(job.texts[i].length / 60));
+
+  const help = document.createElement("p");
+  help.className = "edit-help";
+  help.textContent = "ENTER SAVES / SHIFT+ENTER NEW LINE / ESC CANCELS";
+
+  box.addEventListener("keydown", (event) => {
+    event.stopPropagation();          // keys here belong to the editor only
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      saveEdit(i, box.value);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      cancelEdit();
+    }
+  });
+  // Clicking away keeps what you typed rather than throwing it out.
+  box.addEventListener("blur", () => {
+    if (editing === i) saveEdit(i, box.value);
+  });
+
+  part.append(box, help);
+  box.focus();
+  box.setSelectionRange(box.value.length, box.value.length);
+}
+
+function closeEditor(i, body) {
+  const part = $("reader").children[i];
+  if (!part) return;
+  part.classList.remove("editing");
+  fillWords(part, body);
+  paintReader();
+}
+
+function cancelEdit() {
+  if (editing < 0) return;
+  const i = editing;
+  editing = -1;                 // claim it before the blur fires
+  closeEditor(i, job.texts[i]);
+}
+
+async function saveEdit(i, value) {
+  // Closing the editor removes the textarea, which fires its own blur and
+  // calls back in here. Claim the edit first so the second call does nothing.
+  if (editing !== i) return;
+  editing = -1;
+
+  const body = value.trim();
+  if (body === job.texts[i] || !body) {   // nothing changed, or emptied
+    closeEditor(i, job.texts[i]);
+    return;
+  }
+
+  job.texts[i] = body;
+  closeEditor(i, body);
+  // The old audio no longer matches the words, so re-render just this part.
+  await revoicePart(i, body);
+}
+
+// Ask the server for fresh audio for one edited part.
+async function revoicePart(i, body) {
+  const part = $("reader").children[i];
+  if (part) part.classList.add("revoicing");
+  $("statusLine").textContent = `REDOING PART ${i + 1}...`;
+  try {
+    const response = await fetch(`/revoice/${job.id}/${i}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: body })
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({ detail: response.statusText }));
+      fail(detail.detail || "Could not redo that part.");
+      return;
+    }
+    timings.delete(i);            // old word times no longer apply
+    if (i === index) {
+      player.removeAttribute("src");   // force a reload of the new audio
+      player.load();
+    }
+  } catch (error) {
+    fail(String(error));
+  } finally {
+    if (part) part.classList.remove("revoicing");
+    setStatus();
+  }
 }
 
 /* ---------- word-by-word highlight ---------- */
@@ -760,7 +922,8 @@ $("edit").addEventListener("click", () => {
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.target === text || !job) return;
+  // Never steal keys from a text box, including an open paragraph editor.
+  if (event.target === text || event.target.closest(".edit-box") || !job) return;
   if (event.code === "Space") { event.preventDefault(); toggle(); }
   if (event.code === "ArrowRight") { event.preventDefault(); jumpTo(index + 1); }
   if (event.code === "ArrowLeft") { event.preventDefault(); jumpTo(Math.max(index - 1, 0)); }
