@@ -114,8 +114,11 @@ Two things account for almost every problem:
 ## Tests
 
 ```
-node --test "test/*.test.js"
+npm test
 ```
 
 The tests talk to a real server on `http://127.0.0.1:8888`, so start it first.
 Point them somewhere else with `TTS_SERVER=...`.
+
+They run one file at a time on purpose. Run in parallel they all ask the same
+server to speak at once, and queue behind each other until they time out.

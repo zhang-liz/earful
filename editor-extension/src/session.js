@@ -99,7 +99,20 @@ class Session {
       return false;
     }
 
-    this.job = await response.json();
+    // A reply that is not the JSON we expect must be reported, not thrown:
+    // the caller relies on false to tidy up and say something.
+    try {
+      this.job = await response.json();
+    } catch {
+      this.onStatus("The server sent something unexpected.");
+      return false;
+    }
+    if (!this.job || !this.job.id || !this.job.total) {
+      this.onStatus("The server had nothing to read.");
+      this.job = null;
+      return false;
+    }
+
     this.parts = locateParts(this.speech, this.job.texts || []);
     this.watch();
     return true;

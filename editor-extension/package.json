@@ -136,16 +136,13 @@
           "when": "editorIsOpen"
         },
         {
-          "command": "readItToMe.readFile",
-          "when": "editorIsOpen"
+          "command": "readItToMe.readFile"
         },
         {
-          "command": "readItToMe.toggle",
-          "when": "editorIsOpen"
+          "command": "readItToMe.toggle"
         },
         {
-          "command": "readItToMe.stop",
-          "when": "editorIsOpen"
+          "command": "readItToMe.stop"
         },
         {
           "command": "readItToMe.previous",
@@ -162,6 +159,38 @@
         {
           "command": "readItToMe.speed",
           "when": "readItToMe.reading"
+        }
+      ],
+      "webview/editor/title": [
+        {
+          "command": "readItToMe.readFile",
+          "when": "!readItToMe.reading",
+          "group": "navigation@90"
+        },
+        {
+          "command": "readItToMe.previous",
+          "when": "readItToMe.reading",
+          "group": "navigation@90"
+        },
+        {
+          "command": "readItToMe.toggle",
+          "when": "readItToMe.reading",
+          "group": "navigation@91"
+        },
+        {
+          "command": "readItToMe.next",
+          "when": "readItToMe.reading",
+          "group": "navigation@92"
+        },
+        {
+          "command": "readItToMe.speed",
+          "when": "readItToMe.reading",
+          "group": "navigation@93"
+        },
+        {
+          "command": "readItToMe.stop",
+          "when": "readItToMe.reading",
+          "group": "navigation@94"
         }
       ]
     },
@@ -200,5 +229,8 @@
         }
       }
     }
+  },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 \"test/*.test.js\""
   }
 }

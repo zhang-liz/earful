@@ -17,8 +17,13 @@ function makeVscode(state) {
   const decorationTypes = [];
   return {
     window: {
-      activeTextEditor: state.editor,
-      visibleTextEditors: state.editor ? [state.editor] : [],
+      get activeTextEditor() {
+        return state.activeEditor === null ? undefined : (state.activeEditor || state.editor);
+      },
+      get visibleTextEditors() {
+        if (state.visibleEditors) return state.visibleEditors;
+        return state.editor ? [state.editor] : [];
+      },
       createTextEditorDecorationType(options) {
         const type = { options, id: decorationTypes.length };
         decorationTypes.push(type);
@@ -538,5 +543,81 @@ test("jumping to a line with no audio says so", { timeout: 120000 }, async () =>
   state.editor.selection = { isEmpty: true, active: { line: 2, character: 0 }, start: { line: 2 } };
   await state.commands["readItToMe.jumpHere"]();
   assert.match(state.statusBar.text, /Nothing is read/);
+  state.commands["readItToMe.stop"]();
+});
+
+test("reading works from a Markdown preview, where no editor is active",
+  { timeout: 120000 }, async () => {
+  const { state } = loadExtension("# A Title\n\nSome prose to read aloud here.");
+  state.editor.document.languageId = "markdown";
+  // A preview is in front, so nothing is the active text editor.
+  state.activeEditor = null;
+
+  await state.commands["readItToMe.readFile"]();
+  const started = await until(() => state.posted.some((m) => m.type === "load"), 60000);
+  assert.ok(started, "it should read the file behind the preview");
+  state.commands["readItToMe.stop"]();
+});
+
+test("with nothing open at all it says so rather than throwing", async () => {
+  const { state } = loadExtension(SAMPLE);
+  state.activeEditor = null;
+  state.visibleEditors = [];
+  await state.commands["readItToMe.readFile"]();
+  assert.ok(state.messages.some((m) => /Open a file/.test(m)),
+    "should ask for a file rather than failing silently");
+});
+
+test("highlighting stops pointing at a file that was closed",
+  { timeout: 120000 }, async () => {
+  const { state } = loadExtension(SAMPLE);
+  await state.commands["readItToMe.readFile"]();
+  await until(() => state.posted.some((m) => m.type === "load"));
+  await until(() => {
+    for (let t = 0; t < 6; t += 0.05) state.onMessage({ type: "time", time: t });
+    return state.editor.decorations.some((d) => d.ranges.length > 0);
+  }, 30000);
+
+  // The file is closed while it reads.
+  state.editor.document.isClosed = true;
+  state.editor.decorations.length = 0;
+  for (let t = 0; t < 6; t += 0.05) state.onMessage({ type: "time", time: t });
+
+  const painted = state.editor.decorations.filter((d) => d.ranges.length > 0);
+  assert.strictEqual(painted.length, 0, "nothing should be painted into a closed file");
+  state.commands["readItToMe.stop"]();
+});
+
+test("a second reading does not leave the first one's highlight behind",
+  { timeout: 120000 }, async () => {
+  const { state } = loadExtension(SAMPLE);
+  await state.commands["readItToMe.readFile"]();
+  await until(() => state.posted.some((m) => m.type === "load"));
+  await until(() => {
+    for (let t = 0; t < 6; t += 0.05) state.onMessage({ type: "time", time: t });
+    return state.editor.decorations.some((d) => d.ranges.length > 0);
+  }, 30000);
+
+  state.editor.decorations.length = 0;
+  await state.commands["readItToMe.readFile"]();
+  await until(() => state.posted.some((m) => m.type === "load"));
+
+  // Starting again must clear what the last reading painted.
+  const cleared = state.editor.decorations.some((d) => d.ranges.length === 0);
+  assert.ok(cleared, "the old highlight should have been cleared");
+  state.commands["readItToMe.stop"]();
+});
+
+test("the speed picker being cancelled leaves the speed alone",
+  { timeout: 120000 }, async () => {
+  const { state } = loadExtension(SAMPLE);
+  await state.commands["readItToMe.readFile"]();
+  await until(() => state.posted.some((m) => m.type === "load"));
+
+  state.pick = null;                    // the user presses escape
+  state.posted.length = 0;
+  await state.commands["readItToMe.speed"]();
+  assert.strictEqual(state.posted.filter((m) => m.type === "rate").length, 0,
+    "cancelling should change nothing");
   state.commands["readItToMe.stop"]();
 });

@@ -121,21 +121,39 @@ function handle(message) {
   }
 }
 
+/**
+ * The editor whose text should be read.
+ *
+ * A Markdown preview is a webview, not a text editor, so nothing is active
+ * while one is in front. The file it is previewing is still open behind it,
+ * so fall back to that rather than refusing.
+ */
+function editorToRead() {
+  if (vscode.window.activeTextEditor) return vscode.window.activeTextEditor;
+
+  const visible = vscode.window.visibleTextEditors || [];
+  // Prefer something that looks like prose, since that is what a preview is.
+  return visible.find((e) => ["markdown", "plaintext"].includes(e.document.languageId))
+    || visible[0]
+    || null;
+}
+
 async function read(whole) {
-  const active = vscode.window.activeTextEditor;
+  const active = editorToRead();
   if (!active) {
-    vscode.window.showInformationMessage("Open a file first.");
+    vscode.window.showInformationMessage("Open a file to read.");
     return;
   }
 
   let text;
   let firstLine;
-  if (whole || active.selection.isEmpty) {
+  const selection = active.selection;
+  if (whole || !selection || selection.isEmpty) {
     text = active.document.getText();
     firstLine = 0;
   } else {
-    text = active.document.getText(active.selection);
-    firstLine = active.selection.start.line;
+    text = active.document.getText(selection);
+    firstLine = selection.start.line;
   }
 
   stop();
@@ -186,8 +204,8 @@ async function askForClick() {
 /** Start reading from wherever the cursor is. */
 async function jumpHere() {
   if (!session) { await read(false); return; }
-  const active = vscode.window.activeTextEditor;
-  if (!active) return;
+  const active = editorToRead();
+  if (!active || !active.selection) return;
   const at = active.selection.active;
   const found = await session.jumpTo(at.line, at.character);
   if (!found) setStatus("Nothing is read from that line.");
