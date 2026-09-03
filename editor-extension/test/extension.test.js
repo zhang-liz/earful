@@ -42,6 +42,10 @@ function makeVscode(state) {
         (state.visibleChanged = state.visibleChanged || []).push(handler);
         return { dispose() {} };
       },
+      // Open tabs still name the file a preview is showing.
+      get tabGroups() {
+        return { all: state.tabGroups || [] };
+      },
       createWebviewPanel() {
         return state.panel;
       },
@@ -54,7 +58,11 @@ function makeVscode(state) {
         state.offered = items;
         return Promise.resolve(state.pick ? items.find(state.pick) : undefined);
       },
-      showTextDocument() { state.wentBack = true; return Promise.resolve(); },
+      showTextDocument() {
+        state.wentBack = true;
+        // Opening the file behind a preview yields a real editor to read from.
+        return Promise.resolve(state.editor);
+      },
       createOutputChannel(name) {
         state.logName = name;
         state.logged = [];
@@ -64,6 +72,11 @@ function makeVscode(state) {
     workspace: {
       getConfiguration() {
         return { get: (key) => state.config[key] };
+      },
+      // Reading from a preview opens the document behind it.
+      openTextDocument(uri) {
+        state.openedDocument = uri;
+        return Promise.resolve(state.editor.document);
       },
     },
     commands: {
@@ -653,3 +666,45 @@ test("pausing straight after starting is not mistaken for a blocked browser",
 
 /** Wait a fixed time, for checks that happen on a timer. */
 function settleFor(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+test("the Read button stays put when a Markdown preview is in front",
+  { timeout: 60000 }, async () => {
+  // A preview is not a text editor: nothing is active and nothing is visible.
+  // The button must still be offered, because a preview is exactly the case
+  // where someone wants the file read aloud.
+  const { state } = loadExtension(SAMPLE);
+  state.activeEditor = null;
+  state.visibleEditors = [];
+  state.tabGroups = [{ tabs: [{ input: { uri: { path: "/notes/report.md" } } }] }];
+
+  for (const handler of state.editorChanged || []) handler();
+
+  assert.match(state.statusBar.text, /Read/, "the button should still be offered");
+  assert.ok(state.statusBar.shown, "and it should be visible");
+});
+
+test("reading from a Markdown preview opens the file behind it",
+  { timeout: 120000 }, async () => {
+  const { state } = loadExtension(SAMPLE);
+  state.activeEditor = null;
+  state.visibleEditors = [];
+  state.tabGroups = [{ tabs: [{ input: { uri: { path: "/notes/report.md" } } }] }];
+
+  await state.commands["readItToMe.readFile"]();
+
+  assert.ok(state.openedDocument, "the file behind the preview should be opened");
+  const started = await until(() => state.posted.some((m) => m.type === "load"));
+  assert.ok(started, "and it should start reading");
+  state.commands["readItToMe.stop"]();
+});
+
+test("no Read button when nothing readable is open", async () => {
+  const { state } = loadExtension(SAMPLE);
+  state.activeEditor = null;
+  state.visibleEditors = [];
+  state.tabGroups = [{ tabs: [{ input: { uri: { path: "/src/main.rs" } } }] }];
+
+  for (const handler of state.editorChanged || []) handler();
+
+  assert.ok(!state.statusBar.shown, "nothing to read means no button");
+});

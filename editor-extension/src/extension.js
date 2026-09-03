@@ -79,6 +79,12 @@ function showHighlight(spot) {
   live.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
 }
 
+/**
+ * File names a preview can be showing. Only documents get a preview, so this
+ * stays deliberately narrow; every other file is caught by the editor check.
+ */
+const READABLE = /\.(md|mdx|markdown|qmd|txt|rst|adoc)$/i;
+
 /** Drives which buttons the editor title bar shows. */
 function setReading(reading) {
   vscode.commands.executeCommand("setContext", "readItToMe.reading", reading);
@@ -103,10 +109,32 @@ function setStatus(text) {
  */
 function showIdleButton() {
   if (!statusBar || session) return;
-  if (!editorToRead()) { statusBar.hide(); return; }
+  if (!somethingToRead()) { statusBar.hide(); return; }
   statusBar.text = "$(play) Read";
   statusBar.tooltip = "Read It To Me \u2014 click to read this file out loud";
   statusBar.show();
+}
+
+/**
+ * Whether there is anything worth offering to read.
+ *
+ * A Markdown preview is not a text editor and does not appear among the
+ * visible ones, so asking only about editors hides the button on exactly the
+ * files people most want read aloud. The open tabs still name the file behind
+ * the preview, so they are consulted as well.
+ */
+function somethingToRead() {
+  if (editorToRead()) return true;
+
+  const groups = vscode.window.tabGroups;
+  if (!groups || !groups.all) return false;
+  for (const group of groups.all) {
+    for (const tab of group.tabs || []) {
+      const uri = tab.input && (tab.input.uri || tab.input.modified);
+      if (uri && uri.path && READABLE.test(uri.path)) return true;
+    }
+  }
+  return false;
 }
 
 function stop(keepMessage) {
@@ -156,8 +184,37 @@ function editorToRead() {
     || null;
 }
 
+/**
+ * The document a Markdown preview is showing, opened as a real editor.
+ *
+ * Returns null when no open tab names a readable file.
+ */
+async function editorBehindPreview() {
+  const groups = vscode.window.tabGroups;
+  if (!groups || !groups.all) return null;
+
+  for (const group of groups.all) {
+    for (const tab of group.tabs || []) {
+      const uri = tab.input && (tab.input.uri || tab.input.modified);
+      if (!uri || !uri.path || !READABLE.test(uri.path)) continue;
+      try {
+        const document = await vscode.workspace.openTextDocument(uri);
+        return await vscode.window.showTextDocument(document, {
+          preview: false,
+          preserveFocus: true,
+        });
+      } catch { /* try the next tab */ }
+    }
+  }
+  return null;
+}
+
 async function read(whole) {
-  const active = editorToRead();
+  let active = editorToRead();
+  // Reading from a preview: the preview itself is not an editor, so open the
+  // document it is showing. It opens alongside rather than replacing the
+  // preview, which is what makes the highlight visible while it reads.
+  if (!active) active = await editorBehindPreview();
   if (!active) {
     vscode.window.showInformationMessage("Open a file to read.");
     return;
