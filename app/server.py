@@ -141,6 +141,46 @@ def _run_job(job: Job, text: str) -> None:
         job.publish()
 
 
+def _render_one(job: Job, body: str) -> tuple[np.ndarray, list[dict]]:
+    """Speak one part's text, returning its audio and word timings."""
+    audio_parts: list[np.ndarray] = []
+    words: list[dict] = []
+    offset = 0.0
+    for segment in engine.stream(body, voice=job.voice, speed=job.speed):
+        if not segment.words:
+            continue
+        audio_parts.append(segment.audio)
+        words.extend(
+            {"t": w.text, "s": round(w.start + offset, 3), "e": round(w.end + offset, 3)}
+            for w in segment.words
+        )
+        offset += len(segment.audio) / SAMPLE_RATE
+    audio = np.concatenate(audio_parts) if audio_parts else np.zeros(0, dtype=np.float32)
+    return audio, words
+
+
+def _rerun_job(job: Job, texts: list[str]) -> None:
+    """Re-speak parts that already exist, keeping the part list unchanged.
+
+    Not _run_job: that re-chunks the text, and an edited part can have grown
+    past the chunk limit, which would change how many parts there are.
+    """
+    try:
+        for body in texts:
+            audio, words = _render_one(job, body)
+            with job.lock:
+                job.chunks.append(_to_wav(audio))
+                job.words.append(words)
+                job.seconds += len(audio) / SAMPLE_RATE
+            job.publish()
+        job.state = "ready"
+    except Exception as exc:  # surfaced to the browser, not swallowed
+        job.state = "error"
+        job.error = f"{type(exc).__name__}: {exc}"
+    finally:
+        job.publish()
+
+
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     return (ROOT / "app" / "index.html").read_text()
@@ -185,6 +225,39 @@ def speak(request: SpeakRequest) -> dict:
     return {**job.snapshot(), "texts": job.texts}
 
 
+class RevoiceAllRequest(BaseModel):
+    voice: str
+
+
+@app.post("/voice/{job_id}")
+def change_voice(job_id: str, request: RevoiceAllRequest) -> dict:
+    """Read the whole article again in a different voice."""
+    job = JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown job.")
+    if request.voice not in KNOWN_VOICES:
+        raise HTTPException(status_code=400, detail=f"Unknown voice: {request.voice!r}")
+    if request.voice == job.voice:
+        return {"voice": job.voice, "changed": False}
+
+    with job.lock:
+        if job.state == "running":
+            raise HTTPException(status_code=409, detail="Still reading. Try again shortly.")
+        texts = list(job.texts)
+        job.voice = request.voice
+        # Drop the rendered audio so the reader shows every part as pending
+        # while the new voice is produced, part by part, as it was at first.
+        job.chunks.clear()
+        job.words.clear()
+        job.state = "running"
+        job.started = time.time()
+        job.seconds = 0.0
+
+    (OUTPUT_DIR / f"{job_id}.wav").unlink(missing_ok=True)
+    threading.Thread(target=_rerun_job, args=(job, texts), daemon=True).start()
+    return {"voice": job.voice, "changed": True, "total": job.total}
+
+
 class ReviceRequest(BaseModel):
     text: str = Field(min_length=1)
 
@@ -202,28 +275,10 @@ def revoice(job_id: str, index: int, request: ReviceRequest) -> dict:
     if not body:
         raise HTTPException(status_code=400, detail="No readable text.")
 
-    # An edit can outgrow one chunk; speak only the first, so a part stays a
-    # part. The rest is preserved in the text and read back on the next run.
-    pieces = chunk(body)
-    spoken = pieces[0] if pieces else body
-
-    audio_parts: list[np.ndarray] = []
-    words: list[dict] = []
-    offset = 0.0
-    for segment in engine.stream(spoken, voice=job.voice, speed=job.speed):
-        if not segment.words:
-            continue
-        audio_parts.append(segment.audio)
-        words.extend(
-            {"t": w.text, "s": round(w.start + offset, 3), "e": round(w.end + offset, 3)}
-            for w in segment.words
-        )
-        offset += len(segment.audio) / SAMPLE_RATE
-
-    if not audio_parts:
+    audio, words = _render_one(job, body)
+    if not len(audio):
         raise HTTPException(status_code=400, detail="Nothing to say.")
 
-    audio = np.concatenate(audio_parts)
     with job.lock:
         job.chunks[index] = _to_wav(audio)
         job.words[index] = words

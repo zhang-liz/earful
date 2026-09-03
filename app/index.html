@@ -813,6 +813,38 @@ function toggle() {
   }
 }
 
+/* ---------- follow parts as the server finishes them ---------- */
+// Used both when a narration starts and when the voice changes, since both
+// produce parts one at a time.
+function listenForParts() {
+  if (stream) { stream.close(); stream = null; }
+  stream = new EventSource(`/progress/${job.id}`);
+  stream.onmessage = (event) => {
+    const update = JSON.parse(event.data);
+    ready = update.done;
+
+    if (ready > 0 && !started) {            // first part exists: begin
+      started = true;
+      playing = true;
+      $("toggle").innerHTML = "&#10074;&#10074;";
+      playChunk(0);
+    } else if (waiting && ready > index) {  // we ran dry, now we can resume
+      playChunk(index);
+    }
+
+    if (update.state === "ready") {
+      stream.close(); stream = null;
+      $("download").classList.remove("hidden");
+    } else if (update.state === "error") {
+      stream.close(); stream = null;
+      fail(update.error);
+      return;
+    }
+    setStatus();
+  };
+  stream.onerror = () => { if (stream) { stream.close(); stream = null; } };
+}
+
 /* ---------- start a narration ---------- */
 async function speak() {
   if (!text.value.trim()) { text.focus(); return; }
@@ -849,31 +881,7 @@ async function speak() {
   drawReader();
   setStatus();
 
-  stream = new EventSource(`/progress/${job.id}`);
-  stream.onmessage = (event) => {
-    const update = JSON.parse(event.data);
-    ready = update.done;
-
-    if (ready > 0 && !started) {            // first part exists: begin
-      started = true;
-      playing = true;
-      $("toggle").innerHTML = "&#10074;&#10074;";
-      playChunk(0);
-    } else if (waiting && ready > index) {  // we ran dry, now we can resume
-      playChunk(index);
-    }
-
-    if (update.state === "ready") {
-      stream.close(); stream = null;
-      $("download").classList.remove("hidden");
-    } else if (update.state === "error") {
-      stream.close(); stream = null;
-      fail(update.error);
-      return;
-    }
-    setStatus();
-  };
-  stream.onerror = () => { if (stream) { stream.close(); stream = null; } };
+  listenForParts();
 }
 
 function fail(message) {
@@ -901,6 +909,39 @@ async function sample() {
 }
 
 /* ---------- wiring ---------- */
+// Picking a voice re-reads the article in it. Without a job yet, the choice
+// simply applies to the next one.
+voice.addEventListener("change", async () => {
+  if (!job) return;
+  const chosen = voice.value;
+  player.pause();
+  playing = false;
+  $("toggle").innerHTML = "&#9654;";
+  stopHighlight();
+  timings.clear();
+  $("statusLine").textContent = "CHANGING VOICE...";
+  $("download").classList.add("hidden");
+
+  const response = await fetch(`/voice/${job.id}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ voice: chosen })
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({ detail: response.statusText }));
+    fail(detail.detail || "Could not change the voice.");
+    return;
+  }
+  const result = await response.json();
+  if (!result.changed) { setStatus(); return; }
+
+  // Start over: the old audio is gone and the new parts arrive one by one.
+  ready = 0; index = 0; started = false; waiting = false; pendingSeek = 0;
+  player.removeAttribute("src");
+  player.load();
+  listenForParts();
+});
+
 text.addEventListener("input", refreshCount);
 speed.addEventListener("input", applySpeed);
 for (const button of $("presets").children) {

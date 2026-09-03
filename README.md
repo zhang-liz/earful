@@ -43,7 +43,8 @@ battery.
 ## Use it
 
 1. Paste your text — an article, a chapter, anything. Length does not matter.
-2. Pick a voice. Press **Hear voice** to sample one first.
+2. Pick a voice. Press **Hear voice** to sample one first. Changing the voice
+   while an article is open re-reads the whole thing in the new one.
 3. Press **Read it to me**. It starts reading after a couple of seconds and
    keeps rendering the rest while you listen.
 
