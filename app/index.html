@@ -486,6 +486,7 @@ function drawReader() {
 
 /* ---------- editing a paragraph in place ---------- */
 let editing = false;   // is the whole-article editor open
+let fitEditor = null;  // the open editor's resize handler
 
 // Double-clicking anywhere in the article opens all of it for editing, so a
 // change that spans paragraphs can be made in one go.
@@ -530,15 +531,28 @@ function openEditor(caretPart = 0) {
   const at = caretPart > 0 ? upTo + 2 : 0;
   box.focus();
   box.setSelectionRange(at, at);
-  // Grow to fit the article so there is no inner scrollbar to fight.
-  box.style.height = "auto";
-  box.style.height = `${Math.min(box.scrollHeight, window.innerHeight * 0.7)}px`;
+  // Fill the space down to the bottom of the window, and keep filling it as
+  // the text grows, so there is no short box with a scrollbar under blank page.
+  const fit = () => {
+    box.style.height = "auto";
+    // scrollHeight excludes the border, but height is set on the border box
+    // (box-sizing: border-box), so add it or the last line is clipped.
+    const style = getComputedStyle(box);
+    const border = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+    const toBottom = window.innerHeight - box.getBoundingClientRect().top - 56;
+    box.style.height = `${Math.max(box.scrollHeight + border, toBottom, 240)}px`;
+  };
+  fit();
+  box.addEventListener("input", fit);
+  window.addEventListener("resize", fit);
+  fitEditor = fit;              // so closing can drop the window listener
   box.scrollTop = 0;
 }
 
 function closeEditor() {
   if (!editing) return;
   editing = false;
+  if (fitEditor) { window.removeEventListener("resize", fitEditor); fitEditor = null; }
   $("reader").classList.remove("editing");
   $("readerBox").classList.remove("editor-open");
   drawReader();
@@ -552,6 +566,7 @@ async function saveEditor(value) {
   if (body === job.texts.join("\n\n")) { closeEditor(); return; }  // untouched
 
   editing = false;
+  if (fitEditor) { window.removeEventListener("resize", fitEditor); fitEditor = null; }
   $("reader").classList.remove("editing");
   $("readerBox").classList.remove("editor-open");
   $("statusLine").textContent = "SAVING...";
