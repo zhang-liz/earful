@@ -360,6 +360,7 @@
     <div class="box hidden" id="readerBox">
       <p class="legend">// CLICK A WORD TO JUMP &mdash; DOUBLE-CLICK TO EDIT ALL</p>
       <div class="reader" id="reader"></div>
+      <p class="err hidden" id="readerError"></p>
       <div style="height:12px"></div>
       <button id="edit">&#9998; EDIT TEXT</button>
     </div>
@@ -565,22 +566,37 @@ async function saveEditor(value) {
   if (!body) { closeEditor(); return; }
   if (body === job.texts.join("\n\n")) { closeEditor(); return; }  // untouched
 
+  // Keep the editor open until the save succeeds, so a failure never throws
+  // away what was typed.
+  const box = $("reader").querySelector(".edit-box");
+  if (box) box.disabled = true;
+  $("statusLine").textContent = "SAVING...";
+  clearError();
+
+  let response;
+  try {
+    response = await fetch(`/rewrite/${job.id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: body })
+    });
+  } catch (error) {
+    if (box) { box.disabled = false; box.focus(); }
+    fail(`Could not reach the server: ${error}`);
+    return;
+  }
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({ detail: response.statusText }));
+    if (box) { box.disabled = false; box.focus(); }   // your text is still here
+    fail(detail.detail || "Could not save the text.");
+    return;
+  }
+
+  // Saved: now it is safe to close the editor.
   editing = false;
   if (fitEditor) { window.removeEventListener("resize", fitEditor); fitEditor = null; }
   $("reader").classList.remove("editing");
   $("readerBox").classList.remove("editor-open");
-  $("statusLine").textContent = "SAVING...";
-
-  const response = await fetch(`/rewrite/${job.id}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: body })
-  });
-  if (!response.ok) {
-    const detail = await response.json().catch(() => ({ detail: response.statusText }));
-    fail(detail.detail || "Could not save the text.");
-    return;
-  }
 
   const result = await response.json();
   job.texts = result.texts;
@@ -691,6 +707,11 @@ function drawMeter() {
   [...meter.children].forEach((cell, i) => cell.classList.toggle("lit", i < ready));
 }
 
+function clearError() {
+  $("error").classList.add("hidden");
+  $("readerError").classList.add("hidden");
+}
+
 function setStatus() {
   if (!job) { $("statusLine").textContent = "IDLE"; $("clock").textContent = ""; return; }
   $("statusLine").textContent =
@@ -709,6 +730,7 @@ function setStatus() {
 /* ---------- playback ---------- */
 function playChunk(i, at = 0) {
   if (!job) return;
+  if (i < 0) i = 0;
   if (i >= job.total) {                 // reached the end
     playing = false;
     index = job.total;
@@ -739,7 +761,9 @@ function playChunk(i, at = 0) {
 }
 
 function jumpTo(i, at = 0) {
-  if (!job || i >= ready) return;       // not rendered yet
+  if (!job) return;
+  i = Math.max(0, Math.min(i, job.total - 1));   // stay inside the article
+  if (i >= ready) return;               // not rendered yet
   started = true;
   playing = true;
   $("toggle").innerHTML = "&#10074;&#10074;";
@@ -785,7 +809,7 @@ player.addEventListener("ended", () => {
 });
 
 function toggle() {
-  if (!job) return;
+  if (!job || editing) return;
   if (playing) {
     player.pause();
     playing = false;
@@ -880,9 +904,13 @@ async function speak() {
 function fail(message) {
   $("go").disabled = false;
   $("statusLine").textContent = "STOPPED";
-  $("inputBox").classList.remove("hidden");
+  // Only show the paste box again when there is nothing to fall back to;
+  // otherwise the reader stays and both boxes would be on screen at once.
+  if (!job) $("inputBox").classList.remove("hidden");
   $("error").textContent = message;
   $("error").classList.remove("hidden");
+  $("readerError").textContent = message;
+  $("readerError").classList.toggle("hidden", !job);
 }
 
 async function sample() {
@@ -906,6 +934,13 @@ async function sample() {
 // simply applies to the next one.
 voice.addEventListener("change", async () => {
   if (!job) return;
+  // A voice change redraws the reader, which would strand an open editor and
+  // lose what was typed in it. Save first, then re-read in the new voice.
+  if (editing) {
+    const box = $("reader").querySelector(".edit-box");
+    await saveEditor(box ? box.value : "");
+    if (editing) return;               // the save failed; keep the editor
+  }
   const chosen = voice.value;
   player.pause();
   playing = false;
@@ -940,11 +975,11 @@ speed.addEventListener("input", applySpeed);
 for (const button of $("presets").children) {
   button.addEventListener("click", () => setSpeed(Number(button.dataset.speed)));
 }
-$("go").addEventListener("click", speak);
+$("go").addEventListener("click", () => { if (!editing) speak(); });
 $("sample").addEventListener("click", sample);
 $("toggle").addEventListener("click", toggle);
-$("prev").addEventListener("click", () => job && jumpTo(Math.max(index - 1, 0)));
-$("next").addEventListener("click", () => job && jumpTo(index + 1));
+$("prev").addEventListener("click", () => !editing && jumpTo(index - 1));
+$("next").addEventListener("click", () => !editing && jumpTo(index + 1));
 $("download").addEventListener("click", () => {
   if (job) window.location.href = `/download/${job.id}.wav`;
 });

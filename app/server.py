@@ -79,6 +79,9 @@ class Job:
     started: float = field(default_factory=time.time)
     listeners: list[queue.Queue] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
+    # Bumped whenever a new render supersedes one in flight; the older thread
+    # sees the change and stops instead of writing stale audio.
+    generation: int = 0
 
     def snapshot(self) -> dict:
         return {
@@ -115,15 +118,19 @@ def _to_wav(audio: np.ndarray) -> bytes:
     return buffer.getvalue()
 
 
-def _run_job(job: Job, text: str) -> None:
+def _run_job(job: Job, text: str, generation: int = 0) -> None:
     try:
         for segment in engine.stream(text, voice=job.voice, speed=job.speed):
+            if job.generation != generation:
+                return          # superseded by a newer edit or voice change
             if not segment.words:
                 # The pause between chunks. It is not a part of its own, and
                 # dropping it would run the paragraphs together, so it is left
                 # for the browser to supply as a gap between parts.
                 continue
             with job.lock:
+                if job.generation != generation:
+                    return
                 job.chunks.append(_to_wav(segment.audio))
                 job.words.append(
                     [
@@ -133,10 +140,12 @@ def _run_job(job: Job, text: str) -> None:
                 )
                 job.seconds += len(segment.audio) / SAMPLE_RATE
             job.publish()
-        job.state = "ready"
+        if job.generation == generation:
+            job.state = "ready"
     except Exception as exc:  # surfaced to the browser, not swallowed
-        job.state = "error"
-        job.error = f"{type(exc).__name__}: {exc}"
+        if job.generation == generation:
+            job.state = "error"
+            job.error = f"{type(exc).__name__}: {exc}"
     finally:
         job.publish()
 
@@ -164,6 +173,7 @@ def _rerun_job(
     texts: list[str],
     kept: list[bytes | None] | None = None,
     kept_words: list[list[dict] | None] | None = None,
+    generation: int = 0,
 ) -> None:
     """Speak a known list of parts, reusing any audio passed in `kept`.
 
@@ -172,6 +182,8 @@ def _rerun_job(
     """
     try:
         for i, body in enumerate(texts):
+            if job.generation != generation:
+                return          # superseded by a newer edit or voice change
             reuse = kept[i] if kept else None
             if reuse is not None:
                 wav, words = reuse, (kept_words[i] if kept_words else [])
@@ -180,14 +192,18 @@ def _rerun_job(
                 audio, words = _render_one(job, body)
                 wav, seconds = _to_wav(audio), len(audio) / SAMPLE_RATE
             with job.lock:
+                if job.generation != generation:
+                    return
                 job.chunks.append(wav)
                 job.words.append(words or [])
                 job.seconds += seconds
             job.publish()
-        job.state = "ready"
+        if job.generation == generation:
+            job.state = "ready"
     except Exception as exc:  # surfaced to the browser, not swallowed
-        job.state = "error"
-        job.error = f"{type(exc).__name__}: {exc}"
+        if job.generation == generation:
+            job.state = "error"
+            job.error = f"{type(exc).__name__}: {exc}"
     finally:
         job.publish()
 
@@ -232,7 +248,9 @@ def speak(request: SpeakRequest) -> dict:
         texts=chunks,
     )
     JOBS[job.id] = job
-    threading.Thread(target=_run_job, args=(job, request.text), daemon=True).start()
+    threading.Thread(
+        target=_run_job, args=(job, request.text, job.generation), daemon=True
+    ).start()
     return {**job.snapshot(), "texts": job.texts}
 
 
@@ -252,8 +270,10 @@ def change_voice(job_id: str, request: RevoiceAllRequest) -> dict:
         return {"voice": job.voice, "changed": False}
 
     with job.lock:
-        if job.state == "running":
-            raise HTTPException(status_code=409, detail="Still reading. Try again shortly.")
+        # A render may be in flight; bumping the generation stops it rather
+        # than refusing the user's request.
+        job.generation += 1
+        generation = job.generation
         texts = list(job.texts)
         job.voice = request.voice
         # Drop the rendered audio so the reader shows every part as pending
@@ -265,7 +285,9 @@ def change_voice(job_id: str, request: RevoiceAllRequest) -> dict:
         job.seconds = 0.0
 
     (OUTPUT_DIR / f"{job_id}.wav").unlink(missing_ok=True)
-    threading.Thread(target=_rerun_job, args=(job, texts), daemon=True).start()
+    threading.Thread(
+        target=_rerun_job, args=(job, texts, None, None, generation), daemon=True
+    ).start()
     return {"voice": job.voice, "changed": True, "total": job.total}
 
 
@@ -285,8 +307,8 @@ def rewrite(job_id: str, request: RewriteRequest) -> dict:
         raise HTTPException(status_code=400, detail="No readable text.")
 
     with job.lock:
-        if job.state == "running":
-            raise HTTPException(status_code=409, detail="Still reading. Try again shortly.")
+        job.generation += 1
+        generation = job.generation
         old_texts = list(job.texts)
         old_chunks = list(job.chunks)
         old_words = list(job.words)
@@ -310,7 +332,7 @@ def rewrite(job_id: str, request: RewriteRequest) -> dict:
 
     (OUTPUT_DIR / f"{job_id}.wav").unlink(missing_ok=True)
     threading.Thread(
-        target=_rerun_job, args=(job, parts, kept, kept_words), daemon=True
+        target=_rerun_job, args=(job, parts, kept, kept_words, generation), daemon=True
     ).start()
     reused = sum(1 for c in kept if c is not None)
     return {"total": len(parts), "texts": parts, "reused": reused}
