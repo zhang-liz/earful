@@ -36,6 +36,15 @@ function settings() {
   };
 }
 
+/** How a file's text should be cleaned before it is spoken. */
+function kindFor(language, stripCode) {
+  if (language === "markdown" || language === "mdx" || language === "quarto") {
+    return "markdown";
+  }
+  if (language === "plaintext") return "plain";
+  return stripCode ? "code" : "plain";
+}
+
 function clearHighlight() {
   // The editor may have been closed while we were reading.
   for (const visible of vscode.window.visibleTextEditors) {
@@ -133,9 +142,9 @@ async function read(whole) {
   editor = active;
 
   const config = settings();
-  // Prose files are not code; reading them should not strip anything.
-  const language = active.document.languageId;
-  if (language === "plaintext" || language === "markdown") config.stripCode = false;
+  // Each kind of file carries different marks that are meant to be seen
+  // rather than heard.
+  config.kind = kindFor(active.document.languageId, config.stripCode);
 
   player = new Player(
     config.showPlayerPanel,

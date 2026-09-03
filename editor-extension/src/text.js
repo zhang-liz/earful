@@ -13,37 +13,97 @@ const LEADING_COMMENT = /^\s*(\/\/+|#+|--|;+|%+|\*+|<!--)\s?/;
 const TRAILING_COMMENT = /\s*(-->|\*\/)\s*$/;
 const BLOCK_OPEN = /^\s*\/\*+\s?/;
 
+/* Markdown marks up text with symbols that are meant to be seen, not heard.
+   A heading's hashes, a bullet's dash and the stars around emphasis all have
+   to go, or they get read out one by one. */
+const MD_HEADING = /^\s{0,3}#{1,6}\s+/;
+const MD_QUOTE = /^\s{0,3}>+\s?/;
+const MD_BULLET = /^\s*([-*+]|\d{1,9}[.)])\s+/;
+const MD_RULE = /^\s{0,3}([-*_])(\s*\1){2,}\s*$/;
+const MD_FENCE = /^\s{0,3}(```|~~~)/;
+const MD_TRAILING_HASHES = /\s+#+\s*$/;
+
+/**
+ * Strip one line of Markdown down to the words in it.
+ *
+ * Only the marks at the edges are removed. What is inside a link or a bold
+ * run is still the text someone wrote, so it stays.
+ */
+function stripMarkdown(line) {
+  let out = line
+    .replace(MD_HEADING, "")
+    .replace(MD_QUOTE, "")
+    .replace(MD_BULLET, "")
+    .replace(MD_TRAILING_HASHES, "");
+
+  // [what it says](where it goes) and ![alt](src): keep the words, drop the
+  // address, which is not English and reads terribly.
+  out = out.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1");
+  // [text][ref] and bare [text]
+  out = out.replace(/!?\[([^\]]*)\]\[[^\]]*\]/g, "$1");
+
+  // Emphasis and code marks around a run of text.
+  out = out.replace(/\*\*\*(\S(?:.*?\S)?)\*\*\*/g, "$1");
+  out = out.replace(/\*\*(\S(?:.*?\S)?)\*\*/g, "$1");
+  out = out.replace(/(?<![A-Za-z0-9_])___(\S(?:.*?\S)?)___(?![A-Za-z0-9_])/g, "$1");
+  out = out.replace(/(?<![A-Za-z0-9_])__(\S(?:.*?\S)?)__(?![A-Za-z0-9_])/g, "$1");
+  out = out.replace(/\*(\S(?:.*?\S)?)\*/g, "$1");
+  // An underscore inside a name is part of the name, not emphasis.
+  out = out.replace(/(?<![A-Za-z0-9_])_(\S(?:.*?\S)?)_(?![A-Za-z0-9_])/g, "$1");
+  out = out.replace(/`+([^`]+)`+/g, "$1");
+  out = out.replace(/~~(.+?)~~/g, "$1");
+
+  // A table row is pipes and dashes holding cells apart.
+  if (/^\s*\|/.test(out)) {
+    if (/^[\s|:-]+$/.test(out)) return "";        // the divider row
+    out = out.replace(/^\s*\|/, "").replace(/\|\s*$/, "").replace(/\s*\|\s*/g, ", ");
+  }
+  return out;
+}
+
 /**
  * Split text into speakable lines, each tagged with its source line number.
  *
  * @param {string} text        the raw text
  * @param {number} firstLine   editor line number of the first line of `text`
- * @param {boolean} strip      whether to treat the text as source code
- * @returns {{speech: string, map: Array<{start: number, end: number, line: number}>}}
+ * @param {"code"|"markdown"|"plain"} kind  how to clean each line
+ * @returns {{speech: string, map: Array<{start: number, end: number, line: number, shift: number}>}}
  *   `speech` is what gets spoken; `map` says which editor line each stretch of
- *   `speech` came from.
+ *   `speech` came from, and how far into it the words start.
  */
-function prepare(text, firstLine, strip) {
+function prepare(text, firstLine, kind) {
   const lines = text.split("\n");
   const map = [];
   let speech = "";
 
+  // Backwards compatible: `true` used to mean "this is source code".
+  const mode = kind === true ? "code" : kind === false ? "plain" : kind || "plain";
+  let inFence = false;
+
   lines.forEach((raw, offset) => {
     let line = raw;
-    if (strip) {
+
+    if (mode === "code") {
       if (CODE_ONLY.test(line)) return;          // pure syntax, nothing to say
       line = line
         .replace(BLOCK_OPEN, "")
         .replace(LEADING_COMMENT, "")
         .replace(TRAILING_COMMENT, "");
+    } else if (mode === "markdown") {
+      // A fenced block is code someone pasted in. Reading it aloud is noise.
+      if (MD_FENCE.test(line)) { inFence = !inFence; return; }
+      if (inFence) return;
+      if (MD_RULE.test(line)) return;            // a horizontal rule says nothing
+      line = stripMarkdown(line);
     }
+
     if (!line.trim()) return;
 
-    // How far into the original line the spoken text begins. Indentation and
-    // any comment marker were removed, and the highlight has to put them back
-    // to point at the right characters.
+    // Where each spoken character sits in the original line. Marks can be
+    // taken out of the middle, not only the front, so one offset is not
+    // enough to put the highlight back in the right place.
     const spoken = line.trim();
-    const shift = raw.indexOf(spoken);
+    const columns = mapColumns(raw, spoken);
 
     const start = speech.length;
     speech += spoken;
@@ -51,7 +111,8 @@ function prepare(text, firstLine, strip) {
       start,
       end: speech.length,
       line: firstLine + offset,
-      shift: shift >= 0 ? shift : raw.length - raw.trimStart().length,
+      shift: columns.length ? columns[0] : raw.length - raw.trimStart().length,
+      columns,
     });
     // The server splits into parts on blank lines. Separating every line this
     // way keeps parts small, so audio starts sooner and skipping is useful.
@@ -59,6 +120,30 @@ function prepare(text, firstLine, strip) {
   });
 
   return { speech: speech.trimEnd(), map };
+}
+
+/**
+ * Line up the spoken text with the line it came from.
+ *
+ * Stripping removes marks from anywhere in the line, so this walks both
+ * strings together and records, for each spoken character, which column of
+ * the original it came from. Anything that cannot be lined up falls back to
+ * the last column that could, which keeps the highlight close rather than
+ * wrong by a wide margin.
+ */
+function mapColumns(raw, spoken) {
+  const columns = [];
+  let at = 0;
+  for (const character of spoken) {
+    const found = raw.indexOf(character, at);
+    if (found < 0) {
+      columns.push(at);              // not in the original: stay where we are
+      continue;
+    }
+    columns.push(found);
+    at = found + 1;
+  }
+  return columns;
 }
 
 /** Which editor line a character offset in the spoken text belongs to. */

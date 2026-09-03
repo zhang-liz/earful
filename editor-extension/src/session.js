@@ -6,11 +6,29 @@
 
 const { prepare, lineFor, alignWords, locateParts } = require("./text");
 
+/** Which column of the original line a spoken character sits in. */
+function column(entry, index) {
+  const columns = entry.columns;
+  if (!columns || !columns.length) return entry.shift + Math.max(0, index);
+  const clamped = Math.max(0, Math.min(index, columns.length - 1));
+  return columns[clamped];
+}
+
+/** Which spoken character a column of the original line belongs to. */
+function spokenIndex(entry, character) {
+  const columns = entry.columns;
+  if (!columns || !columns.length) return Math.max(0, character - entry.shift);
+  for (let i = 0; i < columns.length; i++) {
+    if (columns[i] >= character) return i;
+  }
+  return columns.length - 1;
+}
+
 class Session {
   /**
    * @param {object} deps
    * @param {Function} deps.fetch     fetch, or a stand-in
-   * @param {object}   deps.config    { server, password, voice, speed, stripCode }
+   * @param {object}   deps.config    { server, password, voice, speed, kind }
    * @param {object}   deps.player    { post(message) }
    * @param {Function} deps.onHighlight  called with { line, start, end } or null
    * @param {Function} deps.onStatus     called with a line of text
@@ -51,7 +69,11 @@ class Session {
 
   /** Start reading. `firstLine` is the editor line the text starts on. */
   async start(text, firstLine) {
-    const { speech, map } = prepare(text, firstLine, this.config.stripCode);
+    // `kind` says how to clean the text. Older callers passed `stripCode`,
+    // which meant "this is source code".
+    const kind = this.config.kind
+      || (this.config.stripCode === false ? "plain" : "code");
+    const { speech, map } = prepare(text, firstLine, kind);
     if (!speech.trim()) {
       this.onStatus("Nothing to read there.");
       return false;
@@ -194,13 +216,11 @@ class Session {
     const span = spans[found];
     const entry = lineFor(this.map, span.start);
     if (!entry) return;
-    this.onHighlight({
-      line: entry.line,
-      // Offsets are into the original line, so the caller does not have to
-      // work out what was trimmed or stripped off the front.
-      start: entry.shift + (span.start - entry.start),
-      end: entry.shift + (span.end - entry.start),
-    });
+    // Offsets are into the original line, so the caller does not have to work
+    // out what was trimmed or stripped away.
+    const from = column(entry, span.start - entry.start);
+    const to = column(entry, span.end - entry.start - 1) + 1;
+    this.onHighlight({ line: entry.line, start: from, end: Math.max(to, from + 1) });
   }
 
   /**
@@ -215,7 +235,7 @@ class Session {
     // Where that spot sits in the spoken text.
     const entry = this.map.find((m) => m.line === line);
     if (!entry) return false;
-    const offset = entry.start + Math.max(0, character - entry.shift);
+    const offset = entry.start + spokenIndex(entry, character);
 
     // Which part covers it. Parts that could not be placed are skipped.
     let target = -1;

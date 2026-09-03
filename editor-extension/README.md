@@ -83,12 +83,21 @@ In your editor's settings, search for "Read It To Me":
 | `readItToMe.stripCode` | Skip brackets and comment markers in source files. On by default. |
 | `readItToMe.showPlayerPanel` | Show the audio panel beside the file. Off by default; the controls are on the file's own title bar. |
 
-## Reading code
+## What gets skipped
 
-Source files are mostly punctuation, and reading `const x = {` aloud is noise.
-So in code files the comment markers are dropped, lines that are only brackets
-are skipped, and the words are read. Plain text and Markdown are read as
-written.
+Files are full of marks meant for the eye. They are taken out before reading,
+so you hear the words and nothing else.
+
+**Markdown:** heading hashes, bullets, quote arrows, the stars around bold and
+italic, backticks, and horizontal rules. A link is read as its words, not its
+address. Fenced code blocks are skipped. A table is read row by row.
+
+**Source code:** comment markers, and lines that are only brackets.
+
+**Plain text** is read exactly as written.
+
+Underscores inside a name are left alone, so `max_retry_count` still reads as
+itself rather than losing its middle.
 
 ## If nothing happens
 

@@ -16,6 +16,12 @@ const SERVER = process.env.TTS_SERVER || "http://127.0.0.1:8888";
 class FakePlayer {
   constructor() { this.sent = []; }
   post(message) { this.sent.push(message); }
+  last(type) {
+    for (let i = this.sent.length - 1; i >= 0; i--) {
+      if (this.sent[i].type === type) return this.sent[i];
+    }
+    return null;
+  }
 }
 
 async function until(check, ms = 60000) {
@@ -178,5 +184,101 @@ test("highlights land correctly when reading a selection from mid-file",
         `line ${spot.line}: highlighted "${cut}" but was speaking "${spoken}"`);
     }
   }
+  session.stop();
+});
+
+test("every highlight lands on the right word in markdown",
+  { timeout: 180000 }, async () => {
+  const source = [
+    "# The Lighthouse",
+    "",
+    "The keeper had **not** spoken to anyone in three weeks.",
+    "",
+    "- He climbed the ninety-two steps each morning",
+    "- He wiped the salt from the glass",
+    "",
+    "> A boat appeared where none should have been.",
+    "",
+    "See [the record](https://example.com/log) for what happened next.",
+  ].join("\n");
+
+  const lines = source.split("\n");
+  const player = new FakePlayer();
+  const spots = [];
+  const session = new Session({
+    fetch: (url, o) => fetch(url, o),
+    config: { server: SERVER, password: "", voice: "am_michael", speed: 1, kind: "markdown" },
+    player,
+    onHighlight: (spot) => spots.push(spot),
+    onStatus: () => {},
+  });
+
+  const ok = await session.start(source, 0);
+  assert.ok(ok, "markdown should be read");
+  await until(() => session.ready >= session.job.total, 120000);
+
+  // None of the marks should have been spoken.
+  assert.ok(!/[#*>]/.test(session.speech), `marks were left in: ${session.speech}`);
+  assert.ok(!session.speech.includes("example.com"), "a link address should not be read");
+
+  let checked = 0;
+  for (let part = 0; part < session.job.total; part++) {
+    await session.loadWords(part);
+    const spans = session.spans.get(part) || [];
+    session.index = part;
+    for (const span of spans) {
+      session.lit = -1;
+      spots.length = 0;
+      session.time((span.s + span.e) / 2);
+      if (!spots.length || !spots[0]) continue;
+
+      const spot = spots[0];
+      const raw = lines[spot.line];
+      assert.ok(raw !== undefined, `line ${spot.line} should exist`);
+      const cut = raw.slice(spot.start, spot.end);
+      const spoken = session.speech.slice(span.start, span.end);
+      assert.strictEqual(clean(cut), clean(spoken),
+        `line ${spot.line}: highlighted "${cut}" but was speaking "${spoken}"`);
+      checked++;
+    }
+  }
+  assert.ok(checked >= 25, `expected many words, checked ${checked}`);
+  session.stop();
+});
+
+test("jumping in markdown lands on the word under the cursor",
+  { timeout: 180000 }, async () => {
+  const source = [
+    "# Chapter One",
+    "",
+    "The keeper had not spoken to anyone.",
+    "",
+    "- He climbed the ninety-two steps every single morning",
+  ].join("\n");
+
+  const player = new FakePlayer();
+  const session = new Session({
+    fetch: (url, o) => fetch(url, o),
+    config: { server: SERVER, password: "", voice: "am_michael", speed: 1, kind: "markdown" },
+    player,
+    onHighlight: () => {},
+    onStatus: () => {},
+  });
+  await session.start(source, 0);
+  await until(() => session.ready >= session.job.total, 120000);
+
+  // Put the cursor on "ninety-two", which sits after a stripped bullet.
+  const line = 4;
+  const character = source.split("\n")[line].indexOf("ninety-two");
+  player.sent.length = 0;
+  const jumped = await session.jumpTo(line, character);
+  assert.strictEqual(jumped, true, "should jump from a bullet line");
+
+  // It should start at or after that word, not back at the top of the part.
+  const load = player.last("load");
+  assert.ok(load, "should load a part");
+  const entry = session.map.find((m) => m.line === line);
+  const part = session.parts[session.index];
+  assert.ok(part && part.start <= entry.start, "the part should cover that line");
   session.stop();
 });
