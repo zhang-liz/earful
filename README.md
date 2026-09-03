@@ -129,12 +129,20 @@ output/          generated audio (git-ignored)
 
 Reads any web page aloud, highlighting each word in the page itself.
 
-Install it once:
+Install it once. Chrome will not let anything but you do this, so these four
+steps have to be done by hand:
 
 1. Start the server: `./run.sh`
 2. Open `chrome://extensions` in Chrome.
-3. Turn on **Developer mode** (top right).
-4. Click **Load unpacked** and pick the `extension/` folder.
+3. Turn on **Developer mode**, the switch in the top right.
+4. Click **Load unpacked** and pick the `extension/` folder in this project.
+
+An amber speaker icon appears in the toolbar. If you do not see it, click the
+puzzle piece and pin it.
+
+After changing any of these files, go back to `chrome://extensions` and press
+the refresh arrow on the card. Chrome keeps running the old copy until you
+do.
 
 To use it: right-click a page and choose **Read the whole page**, or select
 text and choose **Read this aloud**. `Alt+R` reads the selection. A small
