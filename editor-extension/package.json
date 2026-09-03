@@ -1,0 +1,91 @@
+{
+  "name": "read-it-to-me",
+  "displayName": "Read It To Me",
+  "description": "Read the text in your editor aloud in a natural voice, highlighting each word.",
+  "version": "1.0.0",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "readItToMe.readSelection",
+        "title": "Read It To Me: Read Selection"
+      },
+      {
+        "command": "readItToMe.readFile",
+        "title": "Read It To Me: Read Whole File"
+      },
+      {
+        "command": "readItToMe.toggle",
+        "title": "Read It To Me: Play or Pause"
+      },
+      {
+        "command": "readItToMe.stop",
+        "title": "Read It To Me: Stop"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "readItToMe.readSelection",
+        "key": "alt+r",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "readItToMe.toggle",
+        "key": "alt+p"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "readItToMe.readSelection",
+          "when": "editorHasSelection",
+          "group": "readItToMe@1"
+        },
+        {
+          "command": "readItToMe.readFile",
+          "group": "readItToMe@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Read It To Me",
+      "properties": {
+        "readItToMe.server": {
+          "type": "string",
+          "default": "http://127.0.0.1:8888",
+          "description": "Address of the Read It To Me server."
+        },
+        "readItToMe.password": {
+          "type": "string",
+          "default": "",
+          "description": "Password, if the server was started with one."
+        },
+        "readItToMe.voice": {
+          "type": "string",
+          "default": "am_michael",
+          "description": "Voice id, for example am_michael."
+        },
+        "readItToMe.speed": {
+          "type": "number",
+          "default": 1,
+          "description": "Playback speed."
+        },
+        "readItToMe.stripCode": {
+          "type": "boolean",
+          "default": true,
+          "description": "Strip comment markers and skip code punctuation when reading source files."
+        }
+      }
+    }
+  }
+}

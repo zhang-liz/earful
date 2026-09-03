@@ -120,6 +120,7 @@ app/engine.py    chunking + Kokoro synthesis
 app/server.py    HTTP endpoints, job tracking, progress stream
 app/index.html   the page
 extension/       Chrome extension: read any web page aloud
+editor-extension/ VS Code, Cursor and Antigravity: read the file you are editing
 run.sh           starts the server and opens the browser
 output/          generated audio (git-ignored)
 ```
@@ -146,3 +147,11 @@ The server must be running, because it does the speaking. To point the
 extension at a server on another machine, run `./run.sh --lan`, set
 `TTS_PASSWORD`, and put that address and password in the extension's settings.
 Chrome will ask once for permission to reach that address.
+
+## Editor extension
+
+Reads the file you are editing aloud, lighting each word in the editor. Works
+in VS Code, Cursor and Antigravity. Comment markers and brackets are skipped
+in source files, so you hear the words rather than the punctuation.
+
+See `editor-extension/README.md` for how to install and use it.
