@@ -621,3 +621,23 @@ test("the speed picker being cancelled leaves the speed alone",
     "cancelling should change nothing");
   state.commands["readItToMe.stop"]();
 });
+
+test("pausing straight after starting is not mistaken for a blocked browser",
+  { timeout: 120000 }, async () => {
+  const { state } = loadExtension(SAMPLE);
+  await state.commands["readItToMe.readFile"]();
+  await until(() => state.posted.some((m) => m.type === "load"));
+
+  // The panel reports that sound started, then the user pauses at once.
+  state.messages.length = 0;
+  state.onMessage({ type: "playing", playing: true });
+  state.onMessage({ type: "playing", playing: false });
+  await settleFor(900);
+
+  assert.ok(!state.messages.some((m) => /will not play sound/.test(m)),
+    "a deliberate pause should not ask the user to click");
+  state.commands["readItToMe.stop"]();
+});
+
+/** Wait a fixed time, for checks that happen on a timer. */
+function settleFor(ms) { return new Promise((r) => setTimeout(r, ms)); }

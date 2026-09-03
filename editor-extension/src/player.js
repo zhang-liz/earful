@@ -59,6 +59,9 @@ function html(csp) {
   player.preservesPitch = true;
   let timer = null;
   let needsClick = false;   // the editor refused to make sound without a click
+  let heard = false;        // sound has actually been produced
+  let attempt = 0;          // which request to play we are waiting on
+  let paused_on_purpose = false;
 
   function send(type, body) { vscode.postMessage({ type, ...body }); }
 
@@ -74,6 +77,7 @@ function html(csp) {
   // and the sound never actually starts (a hidden or unfocused panel). Both
   // must be reported, so the extension never claims to be reading in silence.
   async function start() {
+    paused_on_purpose = false;
     try {
       await player.play();
     } catch (error) {
@@ -81,9 +85,19 @@ function html(csp) {
       return;
     }
     watch();
+    // A browser that blocks sound resolves the request and then does nothing,
+    // so check a moment later whether anything actually happened. Pausing on
+    // purpose within that moment is not a failure, and neither is playback
+    // that has already started, so both are let through.
+    heard = false;
     const was = player.currentTime;
+    const asked = ++attempt;
     setTimeout(() => {
-      if (player.paused || player.currentTime === was) send("blocked", {});
+      if (asked !== attempt) return;          // superseded by a later start
+      if (heard) return;                      // sound arrived
+      if (player.paused && paused_on_purpose) return;
+      if (player.currentTime !== was) return;
+      send("blocked", {});
     }, 700);
   }
 
@@ -92,6 +106,7 @@ function html(csp) {
     send("failed", { detail: player.error ? player.error.code : "unknown" }));
   player.addEventListener("playing", () => {
     // Real sound is coming out now, so the prompt has served its purpose.
+    heard = true;
     needsClick = false;
     document.getElementById("toggle").classList.remove("on");
   });
@@ -121,6 +136,7 @@ function html(csp) {
     } else if (message.type === "play") {
       start();
     } else if (message.type === "pause") {
+      paused_on_purpose = true;
       player.pause();
     } else if (message.type === "rate") {
       player.playbackRate = message.rate;

@@ -13,6 +13,7 @@
   let index = 0;           // part being played
   let playing = false;
   let stream = null;
+  let poller = null;       // used instead of a stream when a password is set
   let waiting = false;     // playback caught up with rendering
   let started = false;
   let needsClick = false;   // the browser will not make sound until a click
@@ -408,7 +409,7 @@
 
   function stop() {
     player.pause();
-    if (stream) { stream.close(); stream = null; }
+    stopListening();
     clearHighlight();
     job = null; ready = 0; index = 0; playing = false; started = false; waiting = false;
     timings.clear();
@@ -449,23 +450,36 @@
   }
 
   function listen() {
-    if (stream) { stream.close(); stream = null; }
+    stopListening();
     // EventSource cannot carry an Authorization header, so poll instead when a
     // password is set. Polling is cheap: one small JSON per second.
     if (config.password) {
-      const poll = setInterval(async () => {
-        if (!job) { clearInterval(poll); return; }
-        const response = await api(`/progress-once/${job.id}`);
-        if (!response.ok) { clearInterval(poll); return; }
-        const update = await response.json();
-        onProgress(update);
-        if (update.state !== "running") clearInterval(poll);
+      poller = setInterval(async () => {
+        if (!job) { stopListening(); return; }
+        try {
+          const response = await api(`/progress-once/${job.id}`);
+          if (!response.ok) { stopListening(); return; }
+          const update = await response.json();
+          onProgress(update);
+          if (update.state !== "running") stopListening();
+        } catch {
+          // The server went away. Say so once and stop asking, rather than
+          // knocking on a closed door every second for the rest of the day.
+          stopListening();
+          ui?.setStatus(`Lost the server at ${config.server}.`);
+        }
       }, 900);
       return;
     }
     stream = new EventSource(`${config.server}/progress/${job.id}`);
     stream.onmessage = (event) => onProgress(JSON.parse(event.data));
-    stream.onerror = () => { if (stream) { stream.close(); stream = null; } };
+    stream.onerror = () => { stopListening(); };
+  }
+
+  /** Stop whichever way progress is being followed. */
+  function stopListening() {
+    if (stream) { stream.close(); stream = null; }
+    if (poller) { clearInterval(poller); poller = null; }
   }
 
   function onProgress(update) {
@@ -481,9 +495,9 @@
     } else if (waiting && ready > index) {
       playChunk(index);
     }
-    if (update.state === "ready" && stream) { stream.close(); stream = null; }
+    if (update.state === "ready") stopListening();
     if (update.state === "error") {
-      if (stream) { stream.close(); stream = null; }
+      stopListening();
       ui?.setStatus(update.error || "Something went wrong.");
     }
     setStatus();

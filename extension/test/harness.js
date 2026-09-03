@@ -311,7 +311,15 @@ function load(html, options = {}) {
     getComputedStyle: () => ({ display: "block", visibility: "visible" }),
     requestAnimationFrame: (fn) => { state.frames.push(fn); return state.frames.length; },
     cancelAnimationFrame: (id) => { state.frames = []; },
-    setTimeout, clearTimeout, setInterval, clearInterval, queueMicrotask,
+    // A browser tab keeps running until it is closed, so the script is free
+    // to leave a timer going. Node exits only when nothing is pending, so
+    // every timer the script starts is unref'd: it still fires, but it does
+    // not hold the test run open at the end.
+    setTimeout: (fn, ms, ...a) => { const t = setTimeout(fn, ms, ...a); t.unref?.(); return t; },
+    clearTimeout,
+    setInterval: (fn, ms, ...a) => { const t = setInterval(fn, ms, ...a); t.unref?.(); return t; },
+    clearInterval,
+    queueMicrotask,
     fetch: options.fetch || (() => Promise.reject(new Error("no server"))),
     // The script prefers EventSource when no password is set. Deliver the
     // progress the test's server would report, so playback actually starts.
