@@ -32,6 +32,7 @@ function settings() {
     voice: c.get("voice"),
     speed: c.get("speed"),
     stripCode: c.get("stripCode"),
+    showPlayerPanel: c.get("showPlayerPanel"),
   };
 }
 
@@ -76,7 +77,10 @@ function setReading(reading) {
 
 function setStatus(text) {
   if (!statusBar) return;
+  // Clicking it plays or pauses, so the commonest control is always one
+  // click away without leaving the file.
   statusBar.text = `$(unmute) ${text}`;
+  statusBar.tooltip = "Read It To Me \u2014 click to play or pause";
   statusBar.show();
 }
 
@@ -102,16 +106,7 @@ function handle(message) {
   else if (message.type === "rate") session.rate(message.rate);
   else if (message.type === "blocked") {
     session.setPlaying(false);
-    // A hidden panel has its audio suspended, so bring it into view before
-    // asking the user to do anything.
-    if (player) {
-      player.reveal();
-      // The editor will not make sound until the user clicks something, so
-      // say that plainly in the panel instead of sitting there silent.
-      player.post({ type: "needsClick" });
-    }
-    setStatus("Click Play in the Read It To Me panel.");
-    if (log) log.appendLine("The editor blocked sound until a click. Click Play in the panel.");
+    askForClick();
   } else if (message.type === "failed") {
     setStatus("That audio would not play.");
   }
@@ -143,10 +138,9 @@ async function read(whole) {
   if (language === "plaintext" || language === "markdown") config.stripCode = false;
 
   player = new Player(
-    // The context is not needed beyond creation, so it is not stored.
-    null,
+    config.showPlayerPanel,
     handle,
-    () => { if (session) { session.stop(); session = null; } clearHighlight(); }
+    () => { if (session) { session.stop(); session = null; } clearHighlight(); setReading(false); }
   );
 
   session = new Session({
@@ -160,6 +154,49 @@ async function read(whole) {
   const ok = await session.start(text, firstLine);
   if (!ok) { stop(); return; }
   setReading(true);
+}
+
+/**
+ * The editor refuses to make sound until the user clicks something, and the
+ * refusal is silent. Ask for that click here rather than making them go and
+ * find the panel, which is normally hidden.
+ */
+async function askForClick() {
+  setStatus("Click to start reading");
+  if (log) log.appendLine("The editor blocked sound until a click.");
+
+  const START = "Start reading";
+  const choice = await vscode.window.showInformationMessage(
+    "The editor will not play sound until you click.",
+    START
+  );
+  if (choice !== START || !session) return;
+  session.toggle();          // this click is the gesture it was waiting for
+}
+
+/** Start reading from wherever the cursor is. */
+async function jumpHere() {
+  if (!session) { await read(false); return; }
+  const active = vscode.window.activeTextEditor;
+  if (!active) return;
+  const at = active.selection.active;
+  const found = await session.jumpTo(at.line, at.character);
+  if (!found) setStatus("Nothing is read from that line.");
+}
+
+/** Pick a speed, without leaving the file. */
+async function chooseSpeed() {
+  if (!session) return;
+  const choices = ["0.75", "1", "1.25", "1.5", "1.75", "2"];
+  const picked = await vscode.window.showQuickPick(
+    choices.map((value) => ({
+      label: `${value}x`,
+      description: Number(value) === session.config.speed ? "current" : undefined,
+      value: Number(value),
+    })),
+    { placeHolder: "Reading speed" }
+  );
+  if (picked) session.rate(picked.value);
 }
 
 function activate(context) {
@@ -186,6 +223,10 @@ function activate(context) {
       else read(false);
     }),
     vscode.commands.registerCommand("readItToMe.stop", stop),
+    vscode.commands.registerCommand("readItToMe.previous", () => session?.prev()),
+    vscode.commands.registerCommand("readItToMe.next", () => session?.next()),
+    vscode.commands.registerCommand("readItToMe.jumpHere", jumpHere),
+    vscode.commands.registerCommand("readItToMe.speed", chooseSpeed),
     { dispose: stop }
   );
 }

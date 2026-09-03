@@ -39,20 +39,36 @@ Open any file and press the **play button** in the top right of the editor.
 That is the whole thing. It works the same in a `.txt` or `.md` file as in
 source code.
 
-While it reads, that button becomes pause and stop.
+While it reads, the buttons in that same spot become:
 
-Other ways in, if you prefer them:
+| Button | What it does |
+| --- | --- |
+| `‹` | Back one paragraph |
+| `⏸` | Pause, or play again |
+| `›` | Forward one paragraph |
+| `◎` | Change speed |
+| `⏹` | Stop |
 
-- Right-click and pick **Read Whole File**, or select some text first and pick
+The status bar at the bottom shows which part is being read. Clicking it
+plays or pauses.
+
+**The first time you press play, a message asks you to click.** Editors refuse
+to make any sound until you click something. Click **Start reading** and it
+plays from then on.
+
+## Jumping around
+
+Put the cursor anywhere in the file and press `Alt+J`, or right-click and pick
+**Read From Here**. It starts reading from that word.
+
+This works while it is already reading, so you can skip ahead or go back over
+something without stopping.
+
+Other ways in:
+
+- Right-click and pick **Read Whole File**, or select text first and pick
   **Read Selection**.
 - `Alt+R` reads the selection. `Alt+P` plays or pauses.
-
-A small player opens beside the file with skip and speed buttons, and the
-status bar at the bottom shows which part is being read.
-
-**The first time you press play, click the Play button in the panel.** Editors
-refuse to make any sound until you click something, so the panel asks you to.
-After that click it plays on its own.
 
 ## Settings
 
@@ -65,6 +81,7 @@ In your editor's settings, search for "Read It To Me":
 | `readItToMe.voice` | Which voice, for example `am_michael`. |
 | `readItToMe.speed` | Starting speed. You can change it while it reads. |
 | `readItToMe.stripCode` | Skip brackets and comment markers in source files. On by default. |
+| `readItToMe.showPlayerPanel` | Show the audio panel beside the file. Off by default; the controls are on the file's own title bar. |
 
 ## Reading code
 

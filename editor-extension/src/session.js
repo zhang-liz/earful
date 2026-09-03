@@ -203,6 +203,44 @@ class Session {
     });
   }
 
+  /**
+   * Jump to a place in the file. Finds the word at that line and character,
+   * then plays the part it belongs to from that word's start time.
+   *
+   * Returns true if somewhere to jump to was found.
+   */
+  async jumpTo(line, character) {
+    if (!this.job) return false;
+
+    // Where that spot sits in the spoken text.
+    const entry = this.map.find((m) => m.line === line);
+    if (!entry) return false;
+    const offset = entry.start + Math.max(0, character - entry.shift);
+
+    // Which part covers it. Parts that could not be placed are skipped.
+    let target = -1;
+    for (let i = 0; i < this.parts.length; i++) {
+      const part = this.parts[i];
+      if (!part) continue;
+      if (part.start <= offset) target = i;
+      else break;
+    }
+    if (target < 0) return false;
+
+    // The word timings say where in that part to start.
+    await this.loadWords(target);
+    const spans = this.spans.get(target) || [];
+    let at = 0;
+    for (const span of spans) {
+      if (span.start <= offset) at = span.s;
+      else break;
+    }
+
+    this.finished = false;
+    this.playPart(target, at);
+    return true;
+  }
+
   ended() {
     if (!this.job) return;
     if (this.index + 1 < this.job.total) { this.playPart(this.index + 1); return; }

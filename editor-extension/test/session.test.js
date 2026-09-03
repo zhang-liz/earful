@@ -333,3 +333,84 @@ test("progress updates keep flowing while waiting for a click", async () => {
   assert.strictEqual(session.ready, 2);
   session.stop();
 });
+
+test("jumping to a word plays the part it is in, from that word",
+  { timeout: 120000 }, async () => {
+  const text = [
+    "The keeper had not spoken to anyone in three weeks.",
+    "",
+    "Every morning he climbed the ninety-two steps to the top.",
+    "",
+    "On the fourth Tuesday a boat appeared where none should have been.",
+  ].join("\n");
+
+  const { session, player } = build({ config: { stripCode: false } });
+  await session.start(text, 0);
+  await until(() => session.ready >= session.job.total, 120000);
+
+  // Jump to the word "Tuesday" on the last line.
+  const line = 4;
+  const character = text.split("\n")[4].indexOf("Tuesday");
+  player.sent.length = 0;
+  const ok = await session.jumpTo(line, character);
+  assert.strictEqual(ok, true, "should find somewhere to jump to");
+
+  const load = player.last("load");
+  assert.ok(load, "should load a part");
+  // That line is the last part, and the jump should be partway into it.
+  assert.match(load.url, /\/(\d+)\.wav$/);
+  assert.ok(load.at > 0, `should start partway in, got ${load.at}`);
+
+  // The part it chose must actually contain that line.
+  const entry = session.map.find((m) => m.line === line);
+  const part = session.parts[session.index];
+  assert.ok(part && part.start <= entry.start,
+    "the chosen part should cover the line jumped to");
+  session.stop();
+});
+
+test("jumping to the very start plays from the beginning",
+  { timeout: 120000 }, async () => {
+  const { session, player } = build({ config: { stripCode: false } });
+  await session.start("First line here.\n\nSecond line here.", 0);
+  await until(() => session.ready >= session.job.total, 120000);
+
+  player.sent.length = 0;
+  const ok = await session.jumpTo(0, 0);
+  assert.strictEqual(ok, true);
+  const load = player.last("load");
+  assert.match(load.url, /\/0\.wav$/, "should be the first part");
+  assert.ok(load.at < 0.5, `should be near the start, got ${load.at}`);
+  session.stop();
+});
+
+test("jumping to a line that is not spoken is refused, not guessed",
+  { timeout: 120000 }, async () => {
+  // Line 1 is blank, so nothing was spoken from it.
+  const { session } = build({ config: { stripCode: false } });
+  await session.start("Only this line.\n\nAnd this one.", 0);
+  await until(() => session.ready >= session.job.total, 120000);
+
+  assert.strictEqual(await session.jumpTo(1, 0), false, "a blank line has no audio");
+  assert.strictEqual(await session.jumpTo(99, 0), false, "a line past the end has none either");
+  session.stop();
+});
+
+test("jumping before anything is loaded does nothing", async () => {
+  const { session } = build();
+  assert.strictEqual(await session.jumpTo(0, 0), false);
+});
+
+test("jumping after the end clears the finished state", { timeout: 120000 }, async () => {
+  const { session } = build({ config: { stripCode: false } });
+  await session.start("First part text.\n\nSecond part text.", 0);
+  await until(() => session.ready >= session.job.total, 120000);
+
+  session.playPart(session.job.total - 1);
+  session.ended();
+  assert.strictEqual(session.finished, true);
+
+  await session.jumpTo(0, 0);
+  assert.strictEqual(session.finished, false, "jumping should clear it");
+  session.stop();
+});

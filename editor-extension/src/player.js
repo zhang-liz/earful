@@ -163,15 +163,29 @@ function html(csp) {
  * the user closes the panel.
  */
 class Player {
-  constructor(context, onMessage, onDispose) {
+  /**
+   * @param {boolean} visible  whether to show the panel at all. It is only a
+   *   speaker; every control lives on the file's own title bar. It still has
+   *   to exist, because a webview is the one place in the editor that can
+   *   play sound, but it does not have to be looked at.
+   */
+  constructor(visible, onMessage, onDispose) {
+    // Hidden, the panel opens as a background tab in the same column as the
+    // file, so it takes up no room at all. Shown, it sits beside the file.
+    // Either way it is only a speaker: the controls are on the file's own
+    // title bar.
+    const where = visible
+      ? { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true }
+      : { viewColumn: vscode.ViewColumn.Active, preserveFocus: true };
+
     this.panel = vscode.window.createWebviewPanel(
       VIEW_TYPE,
       "Read It To Me",
-      // Beside the editor, and without stealing focus: the point is to keep
-      // reading the code, not to look at a player.
-      { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
+      where,
       { enableScripts: true, retainContextWhenHidden: true }
     );
+    this.visible = visible;
+    if (!visible) this.hide();
 
     const csp = [
       "default-src 'none'",
@@ -193,7 +207,31 @@ class Player {
   }
 
   reveal() {
+    this.visible = true;
     try { this.panel.reveal(vscode.ViewColumn.Beside, true); } catch { /* gone */ }
+  }
+
+  /**
+   * Put the panel behind the file rather than beside it.
+   *
+   * Closing the tab would dispose the webview and stop the audio with it, so
+   * instead focus is handed straight back to the file. The panel keeps
+   * playing in the background; `retainContextWhenHidden` is what allows that.
+   */
+  hide() {
+    // Closing the tab would dispose the webview and stop the audio with it,
+    // so the file is simply brought back to the front. The panel keeps
+    // playing behind it; `retainContextWhenHidden` is what allows that.
+    try {
+      const editor = vscode.window.activeTextEditor || vscode.window.visibleTextEditors[0];
+      if (editor) {
+        vscode.window.showTextDocument(editor.document, {
+          viewColumn: editor.viewColumn,
+          preserveFocus: false,
+          preview: false,
+        });
+      }
+    } catch { /* nothing to go back to */ }
   }
 
   dispose() {

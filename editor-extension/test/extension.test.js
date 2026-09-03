@@ -30,7 +30,16 @@ function makeVscode(state) {
       createWebviewPanel() {
         return state.panel;
       },
-      showInformationMessage(text) { state.messages.push(text); },
+      showInformationMessage(text, ...actions) {
+        state.messages.push(text);
+        state.offeredActions = actions;
+        return Promise.resolve(state.clickPrompt ? actions[0] : undefined);
+      },
+      showQuickPick(items) {
+        state.offered = items;
+        return Promise.resolve(state.pick ? items.find(state.pick) : undefined);
+      },
+      showTextDocument() { state.wentBack = true; return Promise.resolve(); },
       createOutputChannel(name) {
         state.logName = name;
         state.logged = [];
@@ -280,8 +289,11 @@ test("a blocked autoplay is reported rather than pretending to play",
   await until(() => state.posted.some((m) => m.type === "load"));
 
   state.onMessage({ type: "blocked" });
-  assert.match(state.statusBar.text, /Play/,
-    "should tell the user to press play, not fail silently");
+  await until(() => state.messages.length > 0, 3000);
+  assert.match(state.statusBar.text, /Click to start/,
+    "should say what is needed, not fail silently");
+  assert.ok(state.messages.some((m) => /will not play sound/.test(m)),
+    "should ask in the file's own window, not a hidden panel");
 
   state.commands["readItToMe.stop"]();
 });
@@ -384,22 +396,37 @@ test("activation writes a line to its output channel, so it can be checked", () 
     "should record that it started");
 });
 
-test("a blocked start shows the panel and asks for a click",
-  { timeout: 120000 }, async () => {
+test("clicking the prompt starts the reading", { timeout: 120000 }, async () => {
   const { state } = loadExtension(SAMPLE);
   await state.commands["readItToMe.readFile"]();
   await until(() => state.posted.some((m) => m.type === "load"));
 
+  state.clickPrompt = true;              // the user clicks the button offered
   state.posted.length = 0;
   state.onMessage({ type: "blocked" });
+  await until(() => state.posted.some((m) => m.type === "play"), 3000);
 
-  assert.ok(state.revealed, "the panel should be brought into view");
-  assert.ok(state.posted.some((m) => m.type === "needsClick"),
-    "the panel should be told to ask for a click");
-  assert.match(state.statusBar.text, /Click Play/);
+  assert.ok(state.offeredActions.length === 1, "should offer one clear action");
+  assert.ok(state.posted.some((m) => m.type === "play"),
+    "clicking should be the gesture that starts playback");
   assert.ok(state.logged.some((l) => l.includes("blocked")),
     "should record why nothing was heard");
 
+  state.commands["readItToMe.stop"]();
+});
+
+test("ignoring the prompt leaves everything alone", { timeout: 120000 }, async () => {
+  const { state } = loadExtension(SAMPLE);
+  await state.commands["readItToMe.readFile"]();
+  await until(() => state.posted.some((m) => m.type === "load"));
+
+  state.clickPrompt = false;             // the user dismisses it
+  state.posted.length = 0;
+  state.onMessage({ type: "blocked" });
+  await until(() => state.messages.length > 0, 3000);
+
+  assert.ok(!state.posted.some((m) => m.type === "play"),
+    "nothing should start on its own");
   state.commands["readItToMe.stop"]();
 });
 
@@ -424,4 +451,92 @@ test("a failed start puts the play button back", { timeout: 60000 }, async () =>
   await state.commands["readItToMe.readFile"]();
   assert.strictEqual(state.context["readItToMe.reading"], false,
     "a server that cannot be reached must not leave a pause button");
+});
+
+test("every command in the manifest is registered", () => {
+  const { state } = loadExtension(SAMPLE);
+  for (const { command } of require("../package.json").contributes.commands) {
+    assert.ok(state.commands[command], `${command} should exist`);
+  }
+});
+
+test("the skip and jump commands do nothing before anything is read", async () => {
+  const { state } = loadExtension(SAMPLE);
+  // None of these may throw when there is no reading in progress.
+  await state.commands["readItToMe.previous"]();
+  await state.commands["readItToMe.next"]();
+  await state.commands["readItToMe.speed"]();
+  state.commands["readItToMe.stop"]();
+});
+
+test("choosing a speed applies it", { timeout: 120000 }, async () => {
+  const { state } = loadExtension(SAMPLE);
+  await state.commands["readItToMe.readFile"]();
+  await until(() => state.posted.some((m) => m.type === "load"));
+
+  state.pick = (item) => item.label === "1.5x";
+  state.posted.length = 0;
+  await state.commands["readItToMe.speed"]();
+
+  assert.ok(state.offered.some((i) => i.label === "2x"), "should offer the usual speeds");
+  const rate = state.posted.filter((m) => m.type === "rate").pop();
+  assert.strictEqual(rate.rate, 1.5, "picking 1.5x should set it");
+  state.commands["readItToMe.stop"]();
+});
+
+test("the current speed is marked in the list", { timeout: 120000 }, async () => {
+  const { state } = loadExtension(SAMPLE);
+  await state.commands["readItToMe.readFile"]();
+  await until(() => state.posted.some((m) => m.type === "load"));
+
+  state.pick = null;                      // the user cancels
+  await state.commands["readItToMe.speed"]();
+  const current = state.offered.find((i) => i.description === "current");
+  assert.ok(current, "one entry should be marked as the current speed");
+  assert.strictEqual(current.label, "1x");
+  state.commands["readItToMe.stop"]();
+});
+
+test("read from here jumps to the cursor", { timeout: 120000 }, async () => {
+  const { state } = loadExtension(SAMPLE);
+  await state.commands["readItToMe.readFile"]();
+  // Every part has to exist before a jump to a later one can play.
+  const ready = await until(
+    () => state.posted.some((m) => m.type === "status" && /Part \d+ \/ (\d+)$/.test(m.text)),
+    60000
+  );
+  assert.ok(ready, "the server should finish writing every part");
+
+  // Put the cursor on a later line and jump there.
+  const line = SAMPLE.split("\n").findIndex((l) => l.includes("Every morning"));
+  state.editor.selection = { isEmpty: true, active: { line, character: 6 }, start: { line } };
+
+  state.posted.length = 0;
+  await state.commands["readItToMe.jumpHere"]();
+  const load = state.posted.find((m) => m.type === "load");
+  assert.ok(load, "jumping should load a part");
+  assert.ok(!/\/0\.wav$/.test(load.url), "should jump onward, not back to the first part");
+  state.commands["readItToMe.stop"]();
+});
+
+test("read from here starts reading if nothing is playing yet",
+  { timeout: 120000 }, async () => {
+  const { state } = loadExtension(SAMPLE);
+  state.editor.selection = { isEmpty: true, active: { line: 0, character: 0 }, start: { line: 0 } };
+  await state.commands["readItToMe.jumpHere"]();
+  const started = await until(() => state.posted.some((m) => m.type === "load"));
+  assert.ok(started, "it should just start reading");
+  state.commands["readItToMe.stop"]();
+});
+
+test("jumping to a line with no audio says so", { timeout: 120000 }, async () => {
+  const { state } = loadExtension(SAMPLE);
+  await state.commands["readItToMe.readFile"]();
+  await until(() => state.posted.some((m) => m.type === "load"));
+
+  // Line 2 of the sample is blank, so nothing is spoken from it.
+  state.editor.selection = { isEmpty: true, active: { line: 2, character: 0 }, start: { line: 2 } };
+  await state.commands["readItToMe.jumpHere"]();
+  assert.match(state.statusBar.text, /Nothing is read/);
+  state.commands["readItToMe.stop"]();
 });

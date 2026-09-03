@@ -39,6 +39,30 @@
         "title": "Stop",
         "category": "Read It To Me",
         "icon": "$(debug-stop)"
+      },
+      {
+        "command": "readItToMe.previous",
+        "title": "Back One Part",
+        "category": "Read It To Me",
+        "icon": "$(chevron-left)"
+      },
+      {
+        "command": "readItToMe.next",
+        "title": "Forward One Part",
+        "category": "Read It To Me",
+        "icon": "$(chevron-right)"
+      },
+      {
+        "command": "readItToMe.jumpHere",
+        "title": "Read From Here",
+        "category": "Read It To Me",
+        "icon": "$(target)"
+      },
+      {
+        "command": "readItToMe.speed",
+        "title": "Change Speed",
+        "category": "Read It To Me",
+        "icon": "$(dashboard)"
       }
     ],
     "keybindings": [
@@ -50,6 +74,11 @@
       {
         "command": "readItToMe.toggle",
         "key": "alt+p"
+      },
+      {
+        "command": "readItToMe.jumpHere",
+        "key": "alt+j",
+        "when": "editorTextFocus && readItToMe.reading"
       }
     ],
     "menus": {
@@ -57,28 +86,48 @@
         {
           "command": "readItToMe.readFile",
           "when": "!readItToMe.reading",
-          "group": "navigation@99"
+          "group": "navigation@90"
+        },
+        {
+          "command": "readItToMe.previous",
+          "when": "readItToMe.reading",
+          "group": "navigation@90"
         },
         {
           "command": "readItToMe.toggle",
           "when": "readItToMe.reading",
-          "group": "navigation@99"
+          "group": "navigation@91"
+        },
+        {
+          "command": "readItToMe.next",
+          "when": "readItToMe.reading",
+          "group": "navigation@92"
+        },
+        {
+          "command": "readItToMe.speed",
+          "when": "readItToMe.reading",
+          "group": "navigation@93"
         },
         {
           "command": "readItToMe.stop",
           "when": "readItToMe.reading",
-          "group": "navigation@100"
+          "group": "navigation@94"
         }
       ],
       "editor/context": [
         {
-          "command": "readItToMe.readSelection",
-          "when": "editorHasSelection",
+          "command": "readItToMe.jumpHere",
+          "when": "readItToMe.reading",
           "group": "readItToMe@1"
         },
         {
-          "command": "readItToMe.readFile",
+          "command": "readItToMe.readSelection",
+          "when": "editorHasSelection",
           "group": "readItToMe@2"
+        },
+        {
+          "command": "readItToMe.readFile",
+          "group": "readItToMe@3"
         }
       ],
       "commandPalette": [
@@ -97,6 +146,22 @@
         {
           "command": "readItToMe.stop",
           "when": "editorIsOpen"
+        },
+        {
+          "command": "readItToMe.previous",
+          "when": "readItToMe.reading"
+        },
+        {
+          "command": "readItToMe.next",
+          "when": "readItToMe.reading"
+        },
+        {
+          "command": "readItToMe.jumpHere",
+          "when": "readItToMe.reading"
+        },
+        {
+          "command": "readItToMe.speed",
+          "when": "readItToMe.reading"
         }
       ]
     },
@@ -127,6 +192,11 @@
           "type": "boolean",
           "default": true,
           "description": "Strip comment markers and skip code punctuation when reading source files."
+        },
+        "readItToMe.showPlayerPanel": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show the audio panel beside the file. It is only needed for the one click that lets the editor make sound."
         }
       }
     }
