@@ -47,6 +47,10 @@ function makeVscode(state) {
         state.commands[name] = fn;
         return { dispose() {} };
       },
+      executeCommand(name, key, value) {
+        if (name === "setContext") state.context = { ...state.context, [key]: value };
+        return Promise.resolve();
+      },
     },
     Range: class Range {
       constructor(sl, sc, el, ec) {
@@ -397,4 +401,27 @@ test("a blocked start shows the panel and asks for a click",
     "should record why nothing was heard");
 
   state.commands["readItToMe.stop"]();
+});
+
+test("the title bar shows a play button when idle and pause while reading",
+  { timeout: 120000 }, async () => {
+  const { state } = loadExtension(SAMPLE);
+  // Nothing is being read yet, so the play button should be the one showing.
+  assert.strictEqual(state.context["readItToMe.reading"], false);
+
+  await state.commands["readItToMe.readFile"]();
+  await until(() => state.posted.some((m) => m.type === "load"));
+  assert.strictEqual(state.context["readItToMe.reading"], true,
+    "while reading, the pause and stop buttons should show");
+
+  state.commands["readItToMe.stop"]();
+  assert.strictEqual(state.context["readItToMe.reading"], false,
+    "stopping should put the play button back");
+});
+
+test("a failed start puts the play button back", { timeout: 60000 }, async () => {
+  const { state } = loadExtension(SAMPLE, { config: { server: "http://127.0.0.1:9" } });
+  await state.commands["readItToMe.readFile"]();
+  assert.strictEqual(state.context["readItToMe.reading"], false,
+    "a server that cannot be reached must not leave a pause button");
 });

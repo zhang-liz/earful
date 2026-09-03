@@ -18,19 +18,27 @@
     "commands": [
       {
         "command": "readItToMe.readSelection",
-        "title": "Read It To Me: Read Selection"
+        "title": "Read Selection",
+        "category": "Read It To Me",
+        "icon": "$(play)"
       },
       {
         "command": "readItToMe.readFile",
-        "title": "Read It To Me: Read Whole File"
+        "title": "Read Whole File",
+        "category": "Read It To Me",
+        "icon": "$(play)"
       },
       {
         "command": "readItToMe.toggle",
-        "title": "Read It To Me: Play or Pause"
+        "title": "Play or Pause",
+        "category": "Read It To Me",
+        "icon": "$(debug-pause)"
       },
       {
         "command": "readItToMe.stop",
-        "title": "Read It To Me: Stop"
+        "title": "Stop",
+        "category": "Read It To Me",
+        "icon": "$(debug-stop)"
       }
     ],
     "keybindings": [
@@ -45,6 +53,23 @@
       }
     ],
     "menus": {
+      "editor/title": [
+        {
+          "command": "readItToMe.readFile",
+          "when": "!readItToMe.reading",
+          "group": "navigation@99"
+        },
+        {
+          "command": "readItToMe.toggle",
+          "when": "readItToMe.reading",
+          "group": "navigation@99"
+        },
+        {
+          "command": "readItToMe.stop",
+          "when": "readItToMe.reading",
+          "group": "navigation@100"
+        }
+      ],
       "editor/context": [
         {
           "command": "readItToMe.readSelection",
@@ -54,6 +79,24 @@
         {
           "command": "readItToMe.readFile",
           "group": "readItToMe@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "readItToMe.readSelection",
+          "when": "editorIsOpen"
+        },
+        {
+          "command": "readItToMe.readFile",
+          "when": "editorIsOpen"
+        },
+        {
+          "command": "readItToMe.toggle",
+          "when": "editorIsOpen"
+        },
+        {
+          "command": "readItToMe.stop",
+          "when": "editorIsOpen"
         }
       ]
     },

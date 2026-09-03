@@ -35,11 +35,20 @@ voice runs on your own machine and nothing is sent anywhere else.
 
 ## Use
 
-- Right-click in a file and pick **Read It To Me: Read Whole File**, or select
-  some text first and pick **Read Selection**.
+Open any file and press the **play button** in the top right of the editor.
+That is the whole thing. It works the same in a `.txt` or `.md` file as in
+source code.
+
+While it reads, that button becomes pause and stop.
+
+Other ways in, if you prefer them:
+
+- Right-click and pick **Read Whole File**, or select some text first and pick
+  **Read Selection**.
 - `Alt+R` reads the selection. `Alt+P` plays or pauses.
-- A small player opens beside the file with play, skip and speed buttons.
-- The status bar at the bottom shows which part is being read.
+
+A small player opens beside the file with skip and speed buttons, and the
+status bar at the bottom shows which part is being read.
 
 **The first time you press play, click the Play button in the panel.** Editors
 refuse to make any sound until you click something, so the panel asks you to.

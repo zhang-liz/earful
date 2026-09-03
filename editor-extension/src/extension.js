@@ -69,6 +69,11 @@ function showHighlight(spot) {
   live.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
 }
 
+/** Drives which buttons the editor title bar shows. */
+function setReading(reading) {
+  vscode.commands.executeCommand("setContext", "readItToMe.reading", reading);
+}
+
 function setStatus(text) {
   if (!statusBar) return;
   statusBar.text = `$(unmute) ${text}`;
@@ -76,6 +81,7 @@ function setStatus(text) {
 }
 
 function stop() {
+  setReading(false);
   if (session) session.stop();
   session = null;
   if (player) { player.dispose(); player = null; }
@@ -153,9 +159,12 @@ async function read(whole) {
 
   const ok = await session.start(text, firstLine);
   if (!ok) { stop(); return; }
+  setReading(true);
 }
 
 function activate(context) {
+  setReading(false);
+
   // A one-line note that activation happened, so a problem in a real editor
   // can be told apart from the extension never starting at all.
   try {
