@@ -16,6 +16,30 @@ few seconds. Press `Ctrl+C` in the terminal to stop.
 
 To use a different port: `PORT=9000 ./run.sh`
 
+## Use it from your phone
+
+Same Wi-Fi as the Mac:
+
+```sh
+TTS_PASSWORD=pick-a-password ./run.sh --lan
+```
+
+It prints the address to open on your phone, like `http://192.168.86.20:8888`.
+Leave the username blank and enter the password. In Safari, **Share → Add to
+Home Screen** gives it an app icon and hides the browser bars.
+
+The Mac does all the work, so it must be awake and on the same network. A
+sleeping or closed Mac cannot answer. Note the address changes if your router
+gives the Mac a different one; check with `ipconfig getifaddr en0`.
+
+`TTS_PASSWORD` is optional but strongly recommended: without it, anyone on the
+network can open the page. With no password set, `./run.sh` alone stays
+local-only and unprotected, which is fine.
+
+Away from home you would also need a tunnel (Tailscale is the simplest) and the
+Mac still has to be awake — plugged in, since `womp` (wake on network) is off on
+battery.
+
 ## Use it
 
 1. Paste your text — an article, a chapter, anything. Length does not matter.

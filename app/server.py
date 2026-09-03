@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import io
 import json
+import os
 import queue
+import secrets
 import threading
 import time
 import uuid
@@ -27,6 +31,35 @@ app = FastAPI(title="TTS Reader")
 
 # Silence inserted between parts, in seconds.
 GAP_SECONDS = 0.25
+
+# Set TTS_PASSWORD to require a password. Left unset (the local-only default),
+# every request is allowed through.
+PASSWORD = os.environ.get("TTS_PASSWORD", "").strip()
+
+
+@app.middleware("http")
+async def require_password(request: Request, call_next):
+    """Gate every request behind HTTP basic auth when a password is set."""
+    if not PASSWORD:
+        return await call_next(request)
+
+    header = request.headers.get("authorization", "")
+    if header.startswith("Basic "):
+        try:
+            decoded = base64.b64decode(header[6:]).decode("utf-8", "replace")
+        except (ValueError, binascii.Error):
+            decoded = ""
+        _, _, supplied = decoded.partition(":")
+        # Compared in constant time so the password cannot be guessed by
+        # timing how long the check takes.
+        if secrets.compare_digest(supplied, PASSWORD):
+            return await call_next(request)
+
+    return Response(
+        status_code=401,
+        content="Password required.",
+        headers={"WWW-Authenticate": 'Basic realm="Read It To Me"'},
+    )
 
 
 @dataclass
@@ -125,11 +158,18 @@ def voices() -> dict:
     }
 
 
+KNOWN_VOICES = {vid for entries in VOICES.values() for vid, _ in entries}
+
+
 @app.post("/speak")
 def speak(request: SpeakRequest) -> dict:
     chunks = chunk(request.text)
     if not chunks:
         raise HTTPException(status_code=400, detail="No readable text.")
+    if request.voice not in KNOWN_VOICES:
+        # Without this the engine tries to download a voice file named after
+        # whatever was sent and fails with an unhelpful 404 from the model host.
+        raise HTTPException(status_code=400, detail=f"Unknown voice: {request.voice!r}")
 
     job = Job(
         id=uuid.uuid4().hex[:12],
@@ -260,6 +300,8 @@ def download(job_id: str) -> FileResponse:
 @app.post("/preview")
 def preview(request: SpeakRequest) -> Response:
     """Short sample of one voice, rendered straight to a WAV in memory."""
+    if request.voice not in KNOWN_VOICES:
+        raise HTTPException(status_code=400, detail=f"Unknown voice: {request.voice!r}")
     audio = engine.synthesize(request.text[:300], voice=request.voice, speed=1.0)
     data = _to_wav(audio)
     return Response(
