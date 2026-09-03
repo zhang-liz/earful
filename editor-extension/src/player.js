@@ -246,7 +246,12 @@ class Player {
           preserveFocus: false,
           preview: false,
         });
+        return;
       }
+      // Reading from a Markdown preview there is no editor to go back to, and
+      // leaving it there would put the player in front of the very thing being
+      // read. Focus is handed to the previous tab instead.
+      vscode.commands.executeCommand("workbench.action.previousEditor");
     } catch { /* nothing to go back to */ }
   }
 

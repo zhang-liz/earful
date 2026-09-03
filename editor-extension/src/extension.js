@@ -185,59 +185,63 @@ function editorToRead() {
 }
 
 /**
- * The document a Markdown preview is showing, opened as a real editor.
+ * The document a Markdown preview is showing.
+ *
+ * A preview is not a text editor, so there is nothing to read from directly.
+ * The open tabs still name the file, and a document can be loaded without
+ * opening an editor for it, so the preview is left exactly as it is.
  *
  * Returns null when no open tab names a readable file.
  */
-async function editorBehindPreview() {
+async function documentBehindPreview() {
   const groups = vscode.window.tabGroups;
   if (!groups || !groups.all) return null;
 
   for (const group of groups.all) {
     for (const tab of group.tabs || []) {
-      const uri = tab.input && (tab.input.uri || tab.input.modified);
+      const input = tab.input || {};
+      const uri = input.uri || input.modified;
       if (!uri || !uri.path || !READABLE.test(uri.path)) continue;
       try {
-        const document = await vscode.workspace.openTextDocument(uri);
-        return await vscode.window.showTextDocument(document, {
-          preview: false,
-          preserveFocus: true,
-        });
-      } catch { /* try the next tab */ }
+        return await vscode.workspace.openTextDocument(uri);
+      } catch (error) {
+        if (log) log.appendLine(`Could not open ${uri.path}: ${error && error.message}`);
+      }
     }
   }
   return null;
 }
 
 async function read(whole) {
-  let active = editorToRead();
-  // Reading from a preview: the preview itself is not an editor, so open the
-  // document it is showing. It opens alongside rather than replacing the
-  // preview, which is what makes the highlight visible while it reads.
-  if (!active) active = await editorBehindPreview();
-  if (!active) {
+  // Reading needs a document. An editor is only needed to paint the highlight,
+  // and a Markdown preview has none, so the two are looked up separately: the
+  // preview is left in front, and the words are simply read without a
+  // highlight to follow.
+  const active = editorToRead();
+  const document = active ? active.document : await documentBehindPreview();
+  if (!document) {
     vscode.window.showInformationMessage("Open a file to read.");
     return;
   }
 
   let text;
   let firstLine;
-  const selection = active.selection;
+  const selection = active && active.selection;
   if (whole || !selection || selection.isEmpty) {
-    text = active.document.getText();
+    text = document.getText();
     firstLine = 0;
   } else {
-    text = active.document.getText(selection);
+    text = document.getText(selection);
     firstLine = selection.start.line;
   }
 
   stop();
-  editor = active;
+  editor = active;  // null from a preview: nothing to highlight
 
   const config = settings();
   // Each kind of file carries different marks that are meant to be seen
   // rather than heard.
-  config.kind = kindFor(active.document.languageId, config.stripCode);
+  config.kind = kindFor(document.languageId, config.stripCode);
 
   player = new Player(
     config.showPlayerPanel,

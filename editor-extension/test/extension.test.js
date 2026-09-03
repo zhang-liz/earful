@@ -683,7 +683,7 @@ test("the Read button stays put when a Markdown preview is in front",
   assert.ok(state.statusBar.shown, "and it should be visible");
 });
 
-test("reading from a Markdown preview opens the file behind it",
+test("reading from a Markdown preview reads the file behind it",
   { timeout: 120000 }, async () => {
   const { state } = loadExtension(SAMPLE);
   state.activeEditor = null;
@@ -692,7 +692,9 @@ test("reading from a Markdown preview opens the file behind it",
 
   await state.commands["readItToMe.readFile"]();
 
-  assert.ok(state.openedDocument, "the file behind the preview should be opened");
+  assert.ok(state.openedDocument, "the file behind the preview should be loaded");
+  // The preview stays in front: reading must not shove the source view over it.
+  assert.ok(!state.wentBack, "the preview should be left alone");
   const started = await until(() => state.posted.some((m) => m.type === "load"));
   assert.ok(started, "and it should start reading");
   state.commands["readItToMe.stop"]();
