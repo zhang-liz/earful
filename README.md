@@ -58,6 +58,12 @@ same text at the same spot and carries on from there.
 The address appears in the **ON YOUR PHONE** panel on the main page whenever
 the server is reachable from other devices, so there is no address to type.
 
+If the phone cannot open it, the network is probably keeping devices apart —
+most office and guest Wi-Fi does, and the panel says so when that is a risk.
+Nothing on this machine can lift that. A tunnel goes around it: sign in to
+Tailscale on the Mac and the phone, and the panel switches to the tunnel
+address on its own, which then works from anywhere.
+
 Two things worth knowing. The Mac remembers only the most recent spot, because
 this is "carry on where I left off" rather than a queue. And readings live in
 memory, so restarting the server forgets them; the phone then says there is

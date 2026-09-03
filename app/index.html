@@ -1160,10 +1160,15 @@ measureDock();
 
     document.getElementById("phoneUrl").textContent = phone.url;
     document.getElementById("phonebox").classList.remove("hidden");
-    if (phone.password) {
-      document.getElementById("phoneHint").textContent =
-        "CARRY ON WHERE YOU LEFT OFF / PASSWORD NEEDED";
-    }
+
+    // A plain local address only works if the network lets devices talk to
+    // each other, and plenty of office and guest networks do not. Saying so
+    // up front beats a phone that cannot open the link for no visible reason.
+    const hint = phone.tunnel
+      ? "CARRY ON WHERE YOU LEFT OFF"
+      : "SAME WI-FI ONLY / BLOCKED ON SOME NETWORKS";
+    document.getElementById("phoneHint").textContent =
+      phone.password ? `${hint} / PASSWORD NEEDED` : hint;
   } catch { /* the link is a convenience, never a blocker */ }
 })();
 </script>

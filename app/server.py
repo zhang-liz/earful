@@ -554,17 +554,45 @@ def _listening_beyond_this_machine(port: int) -> bool:
         probe.close()
 
 
+def _tailscale_address() -> str:
+    """This machine's Tailscale address, or "" when Tailscale is not up.
+
+    Worth preferring over the plain LAN address: many networks — most guest
+    and office Wi-Fi — stop devices talking to each other, and a tunnel is
+    what gets a phone through.
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["tailscale", "ip", "-4"],
+            capture_output=True, text=True, timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip().splitlines()[0].strip() if result.stdout.strip() else ""
+
+
 @app.get("/phone")
 def phone_link(request: Request) -> dict:
     """The address to open on a phone to carry on reading."""
-    address = _lan_address()
     port = request.url.port or 80
+    serving = _listening_beyond_this_machine(port)
+
+    # A tunnel address works from anywhere and survives networks that keep
+    # devices apart, so it is offered ahead of the plain local one.
+    tunnel = _tailscale_address()
+    address = tunnel or _lan_address()
+
     return {
         "url": f"http://{address}:{port}/continue" if address else "",
         # A server listening only on this machine cannot be reached by a phone
         # however good the address is, so say so rather than offering a link
         # that will quietly fail.
-        "reachable": bool(address) and _listening_beyond_this_machine(port),
+        "reachable": bool(address) and serving,
+        "tunnel": bool(tunnel),
         "password": bool(PASSWORD),
     }
 
