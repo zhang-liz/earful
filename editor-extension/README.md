@@ -37,7 +37,7 @@ voice runs on your own machine and nothing is sent anywhere else.
 
 Open any file and press the **play button** in the top right of the editor.
 That is the whole thing. It works the same in a `.txt` or `.md` file as in
-source code.
+source code, and in the Markdown preview as well as the text.
 
 While it reads, the buttons in that same spot become:
 
