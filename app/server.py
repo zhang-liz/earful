@@ -555,24 +555,41 @@ def _listening_beyond_this_machine(port: int) -> bool:
 
 
 def _tailscale_address() -> str:
-    """This machine's Tailscale address, or "" when Tailscale is not up.
+    """This machine's Tailscale name, or "" when Tailscale is not up.
 
     Worth preferring over the plain LAN address: many networks — most guest
     and office Wi-Fi — stop devices talking to each other, and a tunnel is
     what gets a phone through.
+
+    The machine's name is returned rather than its number, because the name
+    is the part that never changes. A number can be reassigned; the name is
+    the same address to bookmark today and next month.
     """
+    import json
     import subprocess
 
     try:
         result = subprocess.run(
-            ["tailscale", "ip", "-4"],
-            capture_output=True, text=True, timeout=2,
+            ["tailscale", "status", "--json"],
+            capture_output=True, text=True, timeout=3,
         )
     except (OSError, subprocess.SubprocessError):
         return ""
     if result.returncode != 0:
         return ""
-    return result.stdout.strip().splitlines()[0].strip() if result.stdout.strip() else ""
+
+    try:
+        self_node = json.loads(result.stdout).get("Self") or {}
+    except json.JSONDecodeError:
+        return ""
+
+    # DNSName arrives with a trailing dot, which belongs in DNS but not a URL.
+    name = (self_node.get("DNSName") or "").strip().rstrip(".")
+    if name:
+        return name
+
+    addresses = self_node.get("TailscaleIPs") or []
+    return next((a for a in addresses if ":" not in a), "")
 
 
 @app.get("/phone")
