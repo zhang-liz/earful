@@ -275,9 +275,11 @@
     }
     #playbox .legend { display: none; }
     #playbox .meter { margin: 8px 0 6px; }
-    /* Room so the docked player never covers the end of the article. */
+    /* Room so the docked player never covers the end of the page. Its real
+       height is measured at runtime into --dock-h; the value here is only a
+       first guess for the moment before that runs. */
     .main, .side { padding-bottom: 0; }
-    .layout { padding-bottom: 150px; }
+    .layout { padding-bottom: calc(var(--dock-h, 200px) + 16px); }
     /* The offset shadow sits outside the box, so full-width boxes would push
        the page wider than the screen. Trim the border and drop the shadow. */
     .main .box, .side .box {
@@ -929,9 +931,36 @@ document.addEventListener("keydown", (event) => {
   if (event.code === "ArrowLeft") { event.preventDefault(); jumpTo(Math.max(index - 1, 0)); }
 });
 
+/* The docked player's height changes as buttons appear (SAVE .WAV) and as
+   text wraps, so measure it and reserve exactly that much room below. */
+function measureDock() {
+  const dock = $("playbox");
+  const fixed = getComputedStyle(dock).position === "fixed";
+  document.documentElement.style.setProperty(
+    "--dock-h", fixed ? `${Math.ceil(dock.getBoundingClientRect().height)}px` : "0px");
+}
+
+if (window.ResizeObserver) {
+  // border-box, so the reading includes the border and padding rather than
+  // just the content, which is what has to be cleared.
+  new ResizeObserver(measureDock).observe($("playbox"), { box: "border-box" });
+  // Buttons appear and status text rewraps inside the dock without resizing
+  // it in the same frame, so watch its contents too.
+  new MutationObserver(measureDock).observe($("playbox"), {
+    childList: true, subtree: true, attributes: true, characterData: true,
+  });
+}
+// The pixel font loads after first paint and changes every height with it.
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(measureDock);
+}
+window.addEventListener("resize", measureDock);
+window.addEventListener("orientationchange", measureDock);
+
 loadVoices();
 setSpeed(1);
 refreshCount();
+measureDock();
 </script>
 </body>
 </html>
