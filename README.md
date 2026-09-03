@@ -64,11 +64,11 @@ Nothing on this machine can lift that. A tunnel goes around it: sign in to
 Tailscale on the Mac and the phone, and the panel switches to the tunnel
 address on its own, which then works from anywhere.
 
-The tunnel address is a name, like `http://your-mac.tailnet.ts.net:8888/continue`,
-and that name stays the same for good. A plain Wi-Fi address is handed out by
-whatever router you are on, so it changes when you move between networks; the
-name does not, which makes it the one worth bookmarking or putting on the home
-screen.
+With Tailscale signed in, `./run.sh` puts it in front of the server and the
+address becomes as short as it gets — `http://your-mac/go`. No port, no
+domain, no long path. That name stays the same for good, so it is the one to
+bookmark or add to the home screen. A plain Wi-Fi address is handed out by
+whatever router you are on and changes when you move between networks.
 
 Two things worth knowing. The Mac remembers only the most recent spot, because
 this is "carry on where I left off" rather than a queue. And readings live in

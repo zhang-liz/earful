@@ -509,8 +509,13 @@ def get_handoff() -> dict:
 
 
 @app.get("/continue", response_class=HTMLResponse)
+@app.get("/go", response_class=HTMLResponse)
 def continue_page() -> str:
-    """The page a phone opens to carry on reading."""
+    """The page a phone opens to carry on reading.
+
+    Also answers at /go, because this is an address typed on a phone keyboard
+    and every character saved is worth having.
+    """
     return (ROOT / "app" / "continue.html").read_text()
 
 
@@ -554,42 +559,65 @@ def _listening_beyond_this_machine(port: int) -> bool:
         probe.close()
 
 
-def _tailscale_address() -> str:
-    """This machine's Tailscale name, or "" when Tailscale is not up.
+def _tailscale() -> dict:
+    """What Tailscale offers for reaching this machine.
 
-    Worth preferring over the plain LAN address: many networks — most guest
-    and office Wi-Fi — stop devices talking to each other, and a tunnel is
-    what gets a phone through.
+    Returns the shortest name that works, and whether a proxy is set up that
+    removes the port. Empty name when Tailscale is not up.
 
-    The machine's name is returned rather than its number, because the name
-    is the part that never changes. A number can be reassigned; the name is
-    the same address to bookmark today and next month.
+    A tunnel is worth preferring over the plain LAN address: many networks —
+    most guest and office Wi-Fi — stop devices talking to each other. The
+    machine's name is used rather than its number, because the name is the
+    part that never changes.
     """
     import json
     import subprocess
 
-    try:
-        result = subprocess.run(
-            ["tailscale", "status", "--json"],
-            capture_output=True, text=True, timeout=3,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    if result.returncode != 0:
-        return ""
+    def run(*command: str) -> str:
+        try:
+            done = subprocess.run(
+                command, capture_output=True, text=True, timeout=3,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return done.stdout if done.returncode == 0 else ""
+
+    raw = run("tailscale", "status", "--json")
+    if not raw:
+        return {"name": "", "proxied": False}
 
     try:
-        self_node = json.loads(result.stdout).get("Self") or {}
+        status = json.loads(raw)
     except json.JSONDecodeError:
-        return ""
+        return {"name": "", "proxied": False}
 
+    self_node = status.get("Self") or {}
     # DNSName arrives with a trailing dot, which belongs in DNS but not a URL.
-    name = (self_node.get("DNSName") or "").strip().rstrip(".")
-    if name:
-        return name
+    full = (self_node.get("DNSName") or "").strip().rstrip(".")
+    suffix = (status.get("MagicDNSSuffix") or "").strip().rstrip(".")
 
-    addresses = self_node.get("TailscaleIPs") or []
-    return next((a for a in addresses if ":" not in a), "")
+    # With MagicDNS the bare machine name resolves on its own, which is far
+    # less to type on a phone than the whole tailnet name.
+    name = full
+    if full and suffix and full.endswith("." + suffix):
+        name = full[: -len(suffix) - 1]
+
+    if not name:
+        addresses = self_node.get("TailscaleIPs") or []
+        name = next((a for a in addresses if ":" not in a), "")
+
+    # A proxy on port 80 means the address needs no port at all. Asked of the
+    # serve config rather than guessed from its printed layout.
+    served = run("tailscale", "serve", "status", "--json")
+    proxied = False
+    if served:
+        try:
+            handlers = (json.loads(served) or {}).get("Web") or {}
+            proxied = any(host.endswith(":80") for host in handlers)
+        except json.JSONDecodeError:
+            proxied = False
+
+    return {"name": name, "proxied": proxied}
 
 
 @app.get("/phone")
@@ -600,16 +628,26 @@ def phone_link(request: Request) -> dict:
 
     # A tunnel address works from anywhere and survives networks that keep
     # devices apart, so it is offered ahead of the plain local one.
-    tunnel = _tailscale_address()
-    address = tunnel or _lan_address()
+    tunnel = _tailscale()
+    if tunnel["name"]:
+        # With a proxy in front there is no port to name, which leaves the
+        # shortest address this machine can offer.
+        host = tunnel["name"] if tunnel["proxied"] else f"{tunnel['name']}:{port}"
+        return {
+            "url": f"http://{host}/go",
+            "reachable": True,
+            "tunnel": True,
+            "password": bool(PASSWORD),
+        }
 
+    address = _lan_address()
     return {
-        "url": f"http://{address}:{port}/continue" if address else "",
+        "url": f"http://{address}:{port}/go" if address else "",
         # A server listening only on this machine cannot be reached by a phone
         # however good the address is, so say so rather than offering a link
         # that will quietly fail.
         "reachable": bool(address) and serving,
-        "tunnel": bool(tunnel),
+        "tunnel": False,
         "password": bool(PASSWORD),
     }
 

@@ -32,5 +32,17 @@ elif [[ "${1:-}" == "--lan" ]]; then
   echo "WARNING: could not find this Mac's Wi-Fi address. Is Wi-Fi connected?"
 fi
 
+# With Tailscale signed in, put it in front of the server. That does two
+# things: it works from any network rather than this one, and it serves on the
+# usual web port, so the phone address needs no port number. Failure here is
+# fine — the plain address still works on this network.
+if command -v tailscale >/dev/null 2>&1; then
+  if tailscale status >/dev/null 2>&1; then
+    tailscale serve --bg --http=80 "$PORT" >/dev/null 2>&1 || true
+    SHORT="$(tailscale status --json 2>/dev/null       | python3 -c 'import sys,json;d=json.load(sys.stdin);n=(d.get("Self") or {}).get("DNSName","").rstrip(".");s=(d.get("MagicDNSSuffix") or "").rstrip(".");print(n[:-len(s)-1] if s and n.endswith("."+s) else n)' 2>/dev/null || true)"
+    [[ -n "$SHORT" ]] && echo "On your phone, open:  http://${SHORT}/go"
+  fi
+fi
+
 ( sleep 3; open "http://127.0.0.1:${PORT}" ) &
 exec uv run uvicorn app.server:app --host "$HOST" --port "$PORT"
