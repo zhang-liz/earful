@@ -113,6 +113,7 @@ player.preservesPitch = true;
 
 let spot = null;      // what the computer handed over
 let pending = null;   // a part the phone refused to start without a tap
+let poll = null;      // the pending look for a handoff, so only one runs
 let index = 0;        // the part being played
 let rate = 1;
 
@@ -139,6 +140,7 @@ async function findSpot() {
  * Play is what starts it. Everything before that is only preparation.
  */
 function show(found) {
+  if (poll) { clearTimeout(poll); poll = null; }
   spot = found;
   index = found.index;
 
@@ -179,6 +181,7 @@ function playPart(i, startAt) {
   }
 
   player.play().then(() => {
+    retries = 0;                 // this part arrived; a later stall starts fresh
     $("play").textContent = "Pause";
     say(`Part ${i + 1} of ${spot.total}`);
   }).catch(() => {
@@ -197,13 +200,39 @@ function finish() {
 }
 
 player.addEventListener("ended", () => playPart(index + 1, 0));
-player.addEventListener("error", () => {
-  // A part that is not rendered yet answers 404; waiting a moment is usually
-  // all it takes, because the computer is still working through the text.
-  if (index < (spot ? spot.total : 0)) {
-    say("Waiting for the computer to finish this part…");
-    setTimeout(() => playPart(index, 0), 1500);
+/**
+ * A part that is not rendered yet answers 404, and waiting is usually all it
+ * takes. But a reading the computer has forgotten answers 404 for good, so
+ * the wait is bounded and the server is asked whether the reading is still
+ * there rather than retrying into silence.
+ */
+let retries = 0;
+const MOST_RETRIES = 20;   // about half a minute, longer than any one part
+
+player.addEventListener("error", async () => {
+  if (!spot || index >= spot.total) return;
+
+  if (retries >= MOST_RETRIES) {
+    say("That part never arrived. Start it again on your computer.");
+    $("play").textContent = "Play";
+    return;
   }
+  retries += 1;
+
+  // A reading that no longer exists cannot arrive however long we wait.
+  try {
+    const response = await fetch(`/progress-once/${spot.job}`, { cache: "no-store" });
+    if (!response.ok) {
+      spot = null;
+      $("play").disabled = true;
+      say("That reading is gone. Start a new one on your computer.");
+      waitForSpot();
+      return;
+    }
+  } catch { /* the network wobbled; the retry below still stands */ }
+
+  say("Waiting for the computer to finish this part\u2026");
+  setTimeout(() => playPart(index, 0), 1500);
 });
 
 $("play").addEventListener("click", () => {
@@ -244,10 +273,14 @@ for (const button of document.querySelectorAll(".rates button")) {
 
 /** Wait for the computer to hand something over, then show it. */
 async function waitForSpot() {
+  // Restarting the wait must not leave the previous one running: two loops
+  // would poll twice as often, and each restart would double it again.
+  if (poll) { clearTimeout(poll); poll = null; }
+
   const found = await findSpot();
   if (found && !found.waiting) { show(found); return; }
   if (found) say("Nothing to carry on yet. Start reading on your computer.");
-  setTimeout(waitForSpot, 2000);
+  poll = setTimeout(waitForSpot, 2000);
 }
 
 waitForSpot();
