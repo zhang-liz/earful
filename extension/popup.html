@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Read It To Me</title>
+<style>
+  body {
+    width: 260px; margin: 0; padding: 14px;
+    background: #221f30; color: #ece5d8;
+    font: 11px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  h1 { font-size: 12px; margin: 0 0 10px; color: #f2b33d; letter-spacing: .04em; }
+  label { display: block; margin: 10px 0 4px; color: #a09c94; font-size: 10px; }
+  input, select {
+    width: 100%; box-sizing: border-box; padding: 7px;
+    background: #2c283d; color: #ece5d8; border: 2px solid #453f5c;
+    font: inherit;
+  }
+  button {
+    width: 100%; margin-top: 12px; padding: 9px;
+    background: #f2b33d; color: #0b0a11; border: 2px solid #0b0a11;
+    font: inherit; font-weight: bold; cursor: pointer;
+  }
+  button.ghost { background: #2c283d; color: #ece5d8; margin-top: 7px; }
+  .row { display: flex; gap: 7px; }
+  .row button { flex: 1; }
+  .note { color: #8b849c; font-size: 10px; margin: 10px 0 0; }
+  .ok { color: #7bc86c; }
+  .bad { color: #e06666; }
+</style>
+
+<h1>READ IT TO ME</h1>
+
+<div class="row">
+  <button id="readSelection">Read selection</button>
+</div>
+<div class="row">
+  <button id="readPage" class="ghost">Read page</button>
+  <button id="stop" class="ghost">Stop</button>
+</div>
+
+<label for="voice">Voice</label>
+<select id="voice"></select>
+
+<label for="server">Server address</label>
+<input id="server" type="text" spellcheck="false" placeholder="http://127.0.0.1:8888" />
+
+<label for="password">Password (only if you set one)</label>
+<input id="password" type="password" autocomplete="off" />
+
+<button id="save" class="ghost">Save settings</button>
+<p class="note" id="note">Checking the server...</p>
+
+<script src="popup.js"></script>

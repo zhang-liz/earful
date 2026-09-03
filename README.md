@@ -101,9 +101,9 @@ ahead of you.
 - The same map makes every word a seek target: clicking one seeks to its start
   time. Within the loaded part that is an immediate seek; across parts the
   target is held until the new source reports its metadata.
-- Editing a paragraph posts it to `/revoice/<job>/<part>`, which re-renders
-  that part alone and swaps its audio, word timings and text in place. The
-  joined download file is deleted so it is rebuilt with the new audio.
+- Editing the article posts it to `/rewrite/<job>`, which re-speaks only the
+  paragraphs whose text changed and reuses the audio for the rest. The joined
+  download file is deleted so it is rebuilt with the new audio.
 - FastAPI serves the page, streams progress over SSE, and serves each chunk
   with HTTP range support (browsers stall on media without it).
 
@@ -119,6 +119,30 @@ ahead of you.
 app/engine.py    chunking + Kokoro synthesis
 app/server.py    HTTP endpoints, job tracking, progress stream
 app/index.html   the page
+extension/       Chrome extension: read any web page aloud
 run.sh           starts the server and opens the browser
 output/          generated audio (git-ignored)
 ```
+
+## Browser extension
+
+Reads any web page aloud, highlighting each word in the page itself.
+
+Install it once:
+
+1. Start the server: `./run.sh`
+2. Open `chrome://extensions` in Chrome.
+3. Turn on **Developer mode** (top right).
+4. Click **Load unpacked** and pick the `extension/` folder.
+
+To use it: right-click a page and choose **Read the whole page**, or select
+text and choose **Read this aloud**. `Alt+R` reads the selection. A small
+player appears at the bottom with play, skip and speed buttons.
+
+Click the toolbar icon to set the server address, the voice, and the password
+if you set one. The defaults match `./run.sh` on the same machine.
+
+The server must be running, because it does the speaking. To point the
+extension at a server on another machine, run `./run.sh --lan`, set
+`TTS_PASSWORD`, and put that address and password in the extension's settings.
+Chrome will ask once for permission to reach that address.

@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "Read It To Me",
+  "version": "1.0.0",
+  "description": "Read any page aloud in a natural voice, using the Read It To Me server on your own machine.",
+  "permissions": [
+    "contextMenus",
+    "storage",
+    "activeTab",
+    "scripting",
+    "permissions"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Read It To Me"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "read-selection": {
+      "suggested_key": {
+        "default": "Alt+R",
+        "mac": "Alt+R"
+      },
+      "description": "Read the selected text"
+    }
+  },
+  "optional_host_permissions": [
+    "http://*/*"
+  ]
+}

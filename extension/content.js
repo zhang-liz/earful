@@ -1,0 +1,517 @@
+// Reads selected text (or the whole article) aloud, showing a floating player
+// and lighting each word in the page itself as it is spoken.
+
+(() => {
+  if (window.__readItToMe) return;      // injected twice; keep the first
+  window.__readItToMe = true;
+
+  const HOST_ID = "read-it-to-me-root";
+
+  let config = { server: "http://127.0.0.1:8888", password: "", voice: "am_michael", speed: 1 };
+  let job = null;          // { id, total, texts }
+  let ready = 0;           // parts the server has finished
+  let index = 0;           // part being played
+  let playing = false;
+  let stream = null;
+  let waiting = false;     // playback caught up with rendering
+  let started = false;
+  let raf = null;
+  let litRange = null;     // the highlight currently drawn in the page
+  const timings = new Map();
+  // Where each part's text sits in the page, so words can be lit in place.
+  let sourceRanges = [];
+
+  const player = new Audio();
+  player.preservesPitch = true;
+  player.mozPreservesPitch = true;
+  player.webkitPreservesPitch = true;
+
+  /* ---------------- server ---------------- */
+
+  function headers(extra = {}) {
+    const out = { ...extra };
+    if (config.password) {
+      out.Authorization = "Basic " + btoa(":" + config.password);
+    }
+    return out;
+  }
+
+  async function api(path, options = {}) {
+    return fetch(config.server + path, {
+      ...options,
+      headers: headers(options.headers || {}),
+    });
+  }
+
+  /* ---------------- the floating player ---------------- */
+
+  let ui = null;
+
+  function buildUI() {
+    if (ui) return ui;
+    const host = document.createElement("div");
+    host.id = HOST_ID;
+    // A shadow root so the page's own CSS cannot reach in and break this.
+    const root = host.attachShadow({ mode: "open" });
+    root.innerHTML = `
+      <style>
+        :host { all: initial; }
+        .bar {
+          position: fixed; z-index: 2147483647;
+          left: 50%; bottom: 24px; transform: translateX(-50%);
+          display: flex; align-items: center; gap: 10px;
+          padding: 10px 12px;
+          background: #221f30; color: #ece5d8;
+          border: 3px solid #0b0a11; box-shadow: 4px 4px 0 #0b0a11;
+          font: 10px/1.6 "Press Start 2P", ui-monospace, Menlo, monospace;
+          max-width: min(92vw, 620px);
+        }
+        button {
+          font: inherit; font-size: 10px; color: #ece5d8;
+          background: #2c283d; border: 2px solid #0b0a11;
+          box-shadow: 2px 2px 0 #0b0a11; padding: 8px 10px; cursor: pointer;
+        }
+        button:hover { background: #453f5c; }
+        button:active { transform: translate(2px, 2px); box-shadow: none; }
+        button.on { background: #f2b33d; color: #0b0a11; }
+        .play { min-width: 42px; }
+        .status { color: #a09c94; white-space: nowrap; overflow: hidden;
+                  text-overflow: ellipsis; flex: 1; min-width: 90px; }
+        .close { margin-left: 2px; }
+        .speeds { display: flex; gap: 5px; }
+      </style>
+      <div class="bar" role="region" aria-label="Read It To Me">
+        <button class="play" id="play" title="Play or pause">&#9654;</button>
+        <button id="prev" title="Previous part">&#9198;</button>
+        <button id="next" title="Next part">&#9197;</button>
+        <span class="speeds">
+          <button data-speed="1">1x</button>
+          <button data-speed="1.5">1.5x</button>
+          <button data-speed="2">2x</button>
+        </span>
+        <span class="status" id="status">Getting ready...</span>
+        <button class="close" id="close" title="Stop and close">&#10005;</button>
+      </div>`;
+    (document.body || document.documentElement).append(host);
+
+    const $ = (id) => root.getElementById(id);
+    ui = {
+      root,
+      play: $("play"),
+      status: $("status"),
+      speeds: [...root.querySelectorAll("[data-speed]")],
+      setStatus(text) { $("status").textContent = text; },
+      setPlaying(on) { $("play").innerHTML = on ? "&#10074;&#10074;" : "&#9654;"; },
+    };
+
+    $("play").addEventListener("click", toggle);
+    $("prev").addEventListener("click", () => jumpTo(index - 1));
+    $("next").addEventListener("click", () => jumpTo(index + 1));
+    $("close").addEventListener("click", stop);
+    for (const button of ui.speeds) {
+      button.addEventListener("click", () => setSpeed(Number(button.dataset.speed)));
+    }
+    setSpeed(config.speed);
+    return ui;
+  }
+
+  function setSpeed(rate) {
+    config.speed = rate;
+    player.playbackRate = rate;
+    chrome.storage.sync.set({ speed: rate });
+    if (ui) {
+      for (const button of ui.speeds) {
+        button.classList.toggle("on", Number(button.dataset.speed) === rate);
+      }
+    }
+  }
+
+  function setStatus() {
+    if (!ui || !job) return;
+    ui.setStatus(
+      waiting ? "Buffering..."
+        : playing ? `Part ${index + 1} / ${job.total}`
+        : index >= job.total ? "Finished"
+        : started ? "Paused"
+        : `Getting ready... ${ready}/${job.total}`
+    );
+  }
+
+  /* ---------------- highlighting inside the page ---------------- */
+
+  // Walk the visible text of an element into one flat string, remembering
+  // which text node each character came from so a range can be rebuilt.
+  function indexText(root) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (!node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+        const parent = node.parentElement;
+        if (!parent) return NodeFilter.FILTER_REJECT;
+        if (parent.closest(`#${HOST_ID}, script, style, noscript`)) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        const style = getComputedStyle(parent);
+        if (style.display === "none" || style.visibility === "hidden") {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    const nodes = [];
+    let text = "";
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      nodes.push({ node, start: text.length });
+      text += node.nodeValue;
+    }
+    return { text, nodes };
+  }
+
+  let pageIndex = null;   // { text, nodes } for the page being read
+
+  function rangeFor(from, to) {
+    if (!pageIndex) return null;
+    const find = (offset) => {
+      let low = 0, high = pageIndex.nodes.length - 1, hit = null;
+      while (low <= high) {
+        const mid = (low + high) >> 1;
+        const entry = pageIndex.nodes[mid];
+        if (entry.start <= offset) { hit = entry; low = mid + 1; } else { high = mid - 1; }
+      }
+      if (!hit) return null;
+      return { node: hit.node, offset: Math.min(offset - hit.start, hit.node.nodeValue.length) };
+    };
+    const a = find(from), b = find(to);
+    if (!a || !b) return null;
+    const range = document.createRange();
+    try {
+      range.setStart(a.node, a.offset);
+      range.setEnd(b.node, b.offset);
+    } catch { return null; }
+    return range;
+  }
+
+  function clearHighlight() {
+    if (raf) { cancelAnimationFrame(raf); raf = null; }
+    if (litRange) {
+      // CSS Custom Highlight API leaves the page's own DOM untouched.
+      CSS.highlights?.delete("read-it-to-me");
+      litRange = null;
+    }
+  }
+
+  function lightRange(range) {
+    if (!range || !CSS.highlights) return;
+    litRange = range;
+    CSS.highlights.set("read-it-to-me", new Highlight(range));
+  }
+
+  const clean = (s) => s.toLowerCase().replace(/[^a-z0-9']/g, "");
+
+  // Kokoro emits a token per word and per punctuation mark; the page has its
+  // own spacing. Match them by letters only, walking both in order.
+  function alignToPage(partStart, partText, words) {
+    const spans = [];
+    let cursor = 0;
+    let w = 0;
+    while (w < words.length) {
+      const target = clean(words[w].t);
+      if (!target) { w++; continue; }
+      // Find this word in the part's text, from where we left off.
+      let found = -1;
+      for (let i = cursor; i <= partText.length - 1; i++) {
+        if (clean(partText[i]) !== target[0]) continue;
+        let built = "";
+        let j = i;
+        while (j < partText.length && built.length < target.length) {
+          built += clean(partText[j]);
+          j++;
+        }
+        if (built === target) { found = i; cursor = j; break; }
+      }
+      spans.push(found >= 0
+        ? { start: partStart + found, end: partStart + cursor, s: words[w].s, e: words[w].e }
+        : null);
+      w++;
+    }
+    return spans.filter(Boolean);
+  }
+
+  async function loadTimings(i) {
+    if (timings.has(i)) return timings.get(i);
+    const response = await api(`/words/${job.id}/${i}`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    timings.set(i, data.words);
+    return data.words;
+  }
+
+  async function followWords(i) {
+    clearHighlight();
+    const words = await loadTimings(i);
+    const source = sourceRanges[i];
+    if (!words || !source || index !== i) return;
+
+    const spans = alignToPage(source.start, source.text, words);
+    if (!spans.length) return;
+
+    let lit = -1;
+    const tick = () => {
+      if (!playing || index !== i) { raf = null; return; }
+      const now = player.currentTime;
+      let found = -1;
+      for (let s = 0; s < spans.length; s++) {
+        if (now >= spans[s].s && now < spans[s].e) { found = s; break; }
+      }
+      if (found !== lit) {
+        lit = found;
+        if (found >= 0) {
+          const range = rangeFor(spans[found].start, spans[found].end);
+          lightRange(range);
+          // Keep the spoken word on screen, without yanking the page about.
+          if (range) {
+            const box = range.getBoundingClientRect();
+            if (box.top < 60 || box.bottom > innerHeight - 120) {
+              range.startContainer.parentElement?.scrollIntoView({
+                block: "center", behavior: "smooth",
+              });
+            }
+          }
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+  }
+
+  /* ---------------- playback ---------------- */
+
+  function playChunk(i, at = 0) {
+    if (!job) return;
+    if (i < 0) i = 0;
+    if (i >= job.total) {
+      playing = false;
+      index = job.total;
+      ui?.setPlaying(false);
+      setStatus();
+      return;
+    }
+    if (i >= ready) { waiting = true; index = i; setStatus(); return; }
+
+    waiting = false;
+    index = i;
+    const src = `${config.server}/chunk/${job.id}/${i}.wav`;
+    if (player.getAttribute("src") === src) player.load(); else player.src = src;
+    player.playbackRate = config.speed;
+    if (at > 0) {
+      player.addEventListener("loadedmetadata", () => { player.currentTime = at; }, { once: true });
+    }
+    player.play().catch(() => { playing = false; ui?.setPlaying(false); });
+    followWords(i);
+    setStatus();
+  }
+
+  function jumpTo(i) {
+    if (!job) return;
+    i = Math.max(0, Math.min(i, job.total - 1));
+    if (i >= ready) return;
+    started = true;
+    playing = true;
+    ui?.setPlaying(true);
+    playChunk(i);
+  }
+
+  player.addEventListener("ended", () => {
+    clearHighlight();
+    if (playing) playChunk(index + 1);
+  });
+
+  function toggle() {
+    if (!job) return;
+    if (playing) {
+      player.pause();
+      playing = false;
+      if (raf) { cancelAnimationFrame(raf); raf = null; }
+      ui?.setPlaying(false);
+      setStatus();
+      return;
+    }
+    playing = true;
+    ui?.setPlaying(true);
+    const loaded = player.readyState > 0 && !player.ended && player.currentTime > 0;
+    if (started && loaded) {
+      player.play().catch(() => {});
+      followWords(index);
+      setStatus();
+    } else {
+      started = true;
+      playChunk(index);
+    }
+  }
+
+  function stop() {
+    player.pause();
+    if (stream) { stream.close(); stream = null; }
+    clearHighlight();
+    job = null; ready = 0; index = 0; playing = false; started = false; waiting = false;
+    timings.clear();
+    sourceRanges = [];
+    pageIndex = null;
+    document.getElementById(HOST_ID)?.remove();
+    ui = null;
+  }
+
+  /* ---------------- starting a read ---------------- */
+
+  // Where does each part sit in the page text? Parts come back normalized, so
+  // match them by letters only rather than exact characters.
+  function locateParts(texts, searchFrom = 0) {
+    const flat = pageIndex.text;
+    const flatClean = [];
+    const map = [];
+    for (let i = 0; i < flat.length; i++) {
+      const c = clean(flat[i]);
+      if (c) { flatClean.push(c); map.push(i); }
+    }
+    const haystack = flatClean.join("");
+    let cursor = 0;
+    // Start looking from where the selection began, so a repeated phrase
+    // lights up in the right place.
+    if (searchFrom > 0) {
+      cursor = map.findIndex((position) => position >= searchFrom);
+      if (cursor < 0) cursor = 0;
+    }
+    return texts.map((part) => {
+      const needle = clean(part);
+      if (!needle) return null;
+      const at = haystack.indexOf(needle, cursor);
+      if (at < 0) return null;
+      cursor = at + needle.length;
+      return { start: map[at], end: map[Math.min(at + needle.length, map.length - 1)], text: part };
+    });
+  }
+
+  function listen() {
+    if (stream) { stream.close(); stream = null; }
+    // EventSource cannot carry an Authorization header, so poll instead when a
+    // password is set. Polling is cheap: one small JSON per second.
+    if (config.password) {
+      const poll = setInterval(async () => {
+        if (!job) { clearInterval(poll); return; }
+        const response = await api(`/progress-once/${job.id}`);
+        if (!response.ok) { clearInterval(poll); return; }
+        const update = await response.json();
+        onProgress(update);
+        if (update.state !== "running") clearInterval(poll);
+      }, 900);
+      return;
+    }
+    stream = new EventSource(`${config.server}/progress/${job.id}`);
+    stream.onmessage = (event) => onProgress(JSON.parse(event.data));
+    stream.onerror = () => { if (stream) { stream.close(); stream = null; } };
+  }
+
+  function onProgress(update) {
+    ready = update.done;
+    if (ready > 0 && !started) {
+      started = true;
+      playing = true;
+      ui?.setPlaying(true);
+      playChunk(0);
+      player.play().catch(() => {          // autoplay refused: wait for a click
+        playing = false;
+        started = false;
+        ui?.setPlaying(false);
+        setStatus();
+      });
+    } else if (waiting && ready > index) {
+      playChunk(index);
+    }
+    if (update.state === "ready" && stream) { stream.close(); stream = null; }
+    if (update.state === "error") {
+      if (stream) { stream.close(); stream = null; }
+      ui?.setStatus(update.error || "Something went wrong.");
+    }
+    setStatus();
+  }
+
+  async function read(text, searchFrom = 0) {
+    if (!text.trim()) return;
+    stop();
+    buildUI();
+    ui.setStatus("Getting ready...");
+    pageIndex = indexText(document.body);
+
+    let response;
+    try {
+      response = await api("/speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, voice: config.voice }),
+      });
+    } catch (error) {
+      ui.setStatus(`Cannot reach ${config.server}. Is the app running?`);
+      return;
+    }
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({ detail: response.statusText }));
+      ui.setStatus(detail.detail || "The server refused that.");
+      return;
+    }
+
+    job = await response.json();
+    sourceRanges = locateParts(job.texts, searchFrom);
+    listen();
+    setStatus();
+  }
+
+  /* ---------------- what to read ---------------- */
+
+  function selectionInfo() {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return null;
+    const text = selection.toString();
+    if (!text.trim()) return null;
+    // Where in the flat page text the selection starts, for locateParts.
+    const probe = indexText(document.body);
+    const at = probe.text.indexOf(text.slice(0, 60));
+    return { text, from: at >= 0 ? at : 0 };
+  }
+
+  // The page's main text, preferring the article container when there is one.
+  function pageText() {
+    const candidate =
+      document.querySelector("article") ||
+      document.querySelector("main") ||
+      document.querySelector("[role=main]") ||
+      document.body;
+    const parts = [];
+    for (const node of candidate.querySelectorAll("p, li, h1, h2, h3, h4, blockquote")) {
+      if (node.closest(`#${HOST_ID}, nav, footer, aside`)) continue;
+      const text = node.innerText.trim();
+      if (text.length > 1) parts.push(text);
+    }
+    return parts.join("\n\n") || candidate.innerText.trim();
+  }
+
+  chrome.runtime.onMessage.addListener((message, _sender, respond) => {
+    if (message.type === "ping") { respond({ ok: true }); return false; }
+    if (message.settings) config = { ...config, ...message.settings };
+
+    if (message.type === "read") {
+      const info = selectionInfo();
+      read(message.text || info?.text || "", info?.from || 0);
+    } else if (message.type === "read-selection") {
+      const info = selectionInfo();
+      if (info) read(info.text, info.from);
+      else { buildUI(); ui.setStatus("Select some text first."); }
+    } else if (message.type === "read-page") {
+      read(pageText(), 0);
+    } else if (message.type === "toggle") {
+      toggle();
+    } else if (message.type === "stop") {
+      stop();
+    }
+    respond({ ok: true });
+    return false;
+  });
+})();

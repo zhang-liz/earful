@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -28,6 +29,18 @@ OUTPUT_DIR = ROOT / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 app = FastAPI(title="TTS Reader")
+
+# The browser extension calls this server from whatever page you are reading,
+# so those requests are cross-origin. The server only listens on your own
+# machine or LAN, and a password still gates every route when one is set.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=".*",
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+    expose_headers=["Content-Range", "Accept-Ranges", "Content-Length"],
+)
 
 # Silence inserted between parts, in seconds.
 GAP_SECONDS = 0.25
@@ -41,6 +54,11 @@ PASSWORD = os.environ.get("TTS_PASSWORD", "").strip()
 async def require_password(request: Request, call_next):
     """Gate every request behind HTTP basic auth when a password is set."""
     if not PASSWORD:
+        return await call_next(request)
+
+    # A CORS preflight carries no credentials by design, so it must pass
+    # through to the CORS layer; the real request that follows is still gated.
+    if request.method == "OPTIONS":
         return await call_next(request)
 
     header = request.headers.get("authorization", "")
@@ -336,6 +354,19 @@ def rewrite(job_id: str, request: RewriteRequest) -> dict:
     ).start()
     reused = sum(1 for c in kept if c is not None)
     return {"total": len(parts), "texts": parts, "reused": reused}
+
+
+@app.get("/progress-once/{job_id}")
+def progress_once(job_id: str) -> dict:
+    """One snapshot of a job's progress.
+
+    EventSource cannot send an Authorization header, so the extension polls
+    this instead of /progress when a password is set.
+    """
+    job = JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown job.")
+    return job.snapshot()
 
 
 @app.get("/progress/{job_id}")

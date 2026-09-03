@@ -1,0 +1,6 @@
+/* The word being spoken. ::highlight paints over the page without touching
+   its DOM, so the site's own layout and scripts are unaffected. */
+::highlight(read-it-to-me) {
+  background-color: #f2b33d;
+  color: #0b0a11;
+}
