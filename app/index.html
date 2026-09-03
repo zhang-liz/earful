@@ -746,7 +746,14 @@ function playChunk(i, at = 0) {
   }
   waiting = false;
   index = i;
-  player.src = `/chunk/${job.id}/${i}.wav`;
+  const src = `/chunk/${job.id}/${i}.wav`;
+  // Assigning the same src is a no-op in browsers, so a part that failed to
+  // load (autoplay blocked after a save) would never retry. Force the load.
+  if (player.getAttribute("src") === src) {
+    player.load();
+  } else {
+    player.src = src;
+  }
   player.playbackRate = Number(speed.value);
   // The source has just changed, so any seek waits for metadata. Record the
   // target instead of adding a listener per jump: a rapid second jump would
@@ -820,7 +827,11 @@ function toggle() {
   }
   playing = true;
   $("toggle").innerHTML = "&#10074;&#10074;";
-  if (started && !player.ended && player.currentTime > 0) {
+  // Resume only if this part is genuinely loaded and part-way through.
+  // After a save the src is set but nothing loaded (autoplay is blocked
+  // without a click), so play() on it would do nothing at all.
+  const loaded = player.readyState > 0 && !player.ended && player.currentTime > 0;
+  if (started && loaded) {
     player.play().catch(() => {});      // resume mid-part
     startHighlight(index);
     setStatus();
@@ -845,6 +856,14 @@ function listenForParts() {
       playing = true;
       $("toggle").innerHTML = "&#10074;&#10074;";
       playChunk(0);
+      // If the browser refused to start (no click yet, common right after a
+      // save), show it as paused so the play button reads correctly.
+      player.play().then(() => {}).catch(() => {
+        playing = false;
+        started = false;
+        $("toggle").innerHTML = "&#9654;";
+        setStatus();
+      });
     } else if (waiting && ready > index) {  // we ran dry, now we can resume
       playChunk(index);
     }
