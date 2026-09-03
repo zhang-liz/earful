@@ -22,6 +22,7 @@ let session = null;
 let player = null;
 let editor = null;          // the editor being read
 let statusBar = null;
+const transport = [];  // back, forward and stop, shown only while reading
 let log = null;   // the output channel, for diagnosing problems
 
 function settings() {
@@ -97,6 +98,7 @@ function setStatus(text) {
   statusBar.text = `$(unmute) ${text}`;
   statusBar.tooltip = "Read It To Me \u2014 click to play or pause";
   statusBar.show();
+  for (const item of transport) item.show();
 }
 
 /**
@@ -109,6 +111,8 @@ function setStatus(text) {
  */
 function showIdleButton() {
   if (!statusBar || session) return;
+  // Nothing is playing, so back, forward and stop have nothing to act on.
+  for (const item of transport) item.hide();
   if (!somethingToRead()) { statusBar.hide(); return; }
   statusBar.text = "$(play) Read";
   statusBar.tooltip = "Read It To Me \u2014 click to read this file out loud";
@@ -323,6 +327,24 @@ function activate(context) {
   statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBar.command = "readItToMe.toggle";
   context.subscriptions.push(statusBar);
+
+  // The transport lives in the status bar because it is the one surface every
+  // editor in this family draws reliably: Cursor silently drops title-bar
+  // buttons, and a webview panel would take a visible slot from the file.
+  // Priorities descend so the buttons read left to right in playing order.
+  for (const [name, icon, priority] of [
+    ["previous", "$(chevron-left)", 103],
+    ["next", "$(chevron-right)", 101],
+    ["stop", "$(debug-stop)", 99],
+  ]) {
+    const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, priority);
+    item.command = `readItToMe.${name}`;
+    item.text = icon;
+    item.tooltip = `Read It To Me \u2014 ${name}`;
+    transport.push(item);
+    context.subscriptions.push(item);
+  }
+
   showIdleButton();
 
   // Follow the user from file to file, so the button is present on every

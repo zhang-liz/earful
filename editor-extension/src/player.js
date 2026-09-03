@@ -248,10 +248,11 @@ class Player {
         });
         return;
       }
-      // Reading from a Markdown preview there is no editor to go back to, and
-      // leaving it there would put the player in front of the very thing being
-      // read. Focus is handed to the previous tab instead.
-      vscode.commands.executeCommand("workbench.action.previousEditor");
+      // Reading from a Markdown preview there is no editor to go back to.
+      // Closing the whole group would take the player with it, so the tab
+      // beside it is brought forward instead, which puts the preview back in
+      // front and leaves the player playing behind.
+      vscode.commands.executeCommand("workbench.action.previousEditorInGroup");
     } catch { /* nothing to go back to */ }
   }
 

@@ -30,7 +30,12 @@ function makeVscode(state) {
         return type;
       },
       createStatusBarItem() {
-        return state.statusBar;
+        // The first item is the one the tests assert on; the rest are the
+        // transport buttons, kept so their show/hide can be checked.
+        if (!state.madeStatusBar) { state.madeStatusBar = true; return state.statusBar; }
+        const item = { text: "", shown: false, show() { this.shown = true; }, hide() { this.shown = false; }, dispose() {} };
+        (state.transport = state.transport || []).push(item);
+        return item;
       },
       // The extension follows the user from file to file to decide whether to
       // offer the Read button. Tests keep the handlers so they can fire them.

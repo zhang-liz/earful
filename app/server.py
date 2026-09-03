@@ -9,7 +9,6 @@ import json
 import os
 import queue
 import secrets
-import sys
 import threading
 import time
 import uuid
@@ -531,10 +530,28 @@ def _lan_address() -> str:
         probe.close()
 
 
-# Whether the server is listening on every interface, which is what lets a
-# phone reach it. Uvicorn is told this on the command line, so it is read back
-# from there rather than guessed.
-BOUND_TO_LAN = "0.0.0.0" in sys.argv or "--host" not in sys.argv
+def _listening_beyond_this_machine(port: int) -> bool:
+    """Whether anything answers on the LAN address, not just on loopback.
+
+    Asked of the running socket rather than the command line, because the
+    command line is not visible to a worker process and says nothing about
+    what actually ended up bound.
+    """
+    import socket
+
+    address = _lan_address()
+    if not address:
+        return False
+
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    probe.settimeout(0.3)
+    try:
+        probe.connect((address, port))
+        return True
+    except OSError:
+        return False
+    finally:
+        probe.close()
 
 
 @app.get("/phone")
@@ -547,7 +564,7 @@ def phone_link(request: Request) -> dict:
         # A server listening only on this machine cannot be reached by a phone
         # however good the address is, so say so rather than offering a link
         # that will quietly fail.
-        "reachable": bool(address) and BOUND_TO_LAN,
+        "reachable": bool(address) and _listening_beyond_this_machine(port),
         "password": bool(PASSWORD),
     }
 
