@@ -40,6 +40,15 @@ Away from home you would also need a tunnel (Tailscale is the simplest) and the
 Mac still has to be awake — plugged in, since `womp` (wake on network) is off on
 battery.
 
+### Refreshing does not lose your place
+
+The text box and the reading you had open both come back after a refresh, so
+reloading the page or closing the tab by accident costs nothing. Nothing is
+sent anywhere: the text stays in your own browser.
+
+A reading only comes back while the server still has it. Restart the server
+and the page quietly falls back to the text box, with your text still in it.
+
 ### Carry on where you left off
 
 Start something reading on the Mac — the web page, the browser extension, or

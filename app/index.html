@@ -734,6 +734,9 @@ function setStatus() {
     : playing ? `PART ${index + 1} / ${job.total}`
     : index >= job.total ? "FINISHED"
     : started ? "PAUSED"
+    // Nothing has played yet. Once the audio exists there is nothing left to
+    // wait for, so say what to do rather than claiming to still be working.
+    : ready >= job.total ? "READY - PRESS PLAY"
     : "GETTING READY...";
   $("clock").textContent = ready < job.total
     ? `${ready}/${job.total} PARTS READY`
@@ -859,14 +862,20 @@ function toggle() {
 /* ---------- follow parts as the server finishes them ---------- */
 // Used both when a narration starts and when the voice changes, since both
 // produce parts one at a time.
-function listenForParts() {
+/**
+ * @param {boolean} [autoplay=true]  whether the first finished part should
+ *   start on its own. True when a narration was just asked for, and false
+ *   when an earlier one is being put back after a refresh: a page coming back
+ *   must not start talking on its own.
+ */
+function listenForParts(autoplay = true) {
   if (stream) { stream.close(); stream = null; }
   stream = new EventSource(`/progress/${job.id}`);
   stream.onmessage = (event) => {
     const update = JSON.parse(event.data);
     ready = update.done;
 
-    if (ready > 0 && !started) {            // first part exists: begin
+    if (autoplay && ready > 0 && !started) { // first part exists: begin
       started = true;
       playing = true;
       $("toggle").innerHTML = "&#10074;&#10074;";
@@ -903,6 +912,7 @@ async function speak() {
   player.pause();
 
   job = null; ready = 0; index = 0;
+  rememberJob();  // the old reading is finished with; do not restore it later
   playing = false; waiting = false; started = false;
   stopHighlight();
   timings.clear();
@@ -927,12 +937,58 @@ async function speak() {
   }
 
   job = await response.json();
+  rememberJob();
   $("inputBox").classList.add("hidden");
   $("readerBox").classList.remove("hidden");
   drawReader();
   setStatus();
 
   listenForParts();
+}
+
+const SAVED_JOB = "readItToMe.job";
+
+function rememberJob() {
+  try {
+    if (job) localStorage.setItem(SAVED_JOB, JSON.stringify(job));
+    else localStorage.removeItem(SAVED_JOB);
+  } catch { /* not worth interrupting for */ }
+}
+
+/**
+ * Come back to the reading that was open before a refresh.
+ *
+ * The audio itself lives on the server, so all this needs is the job. The
+ * server forgets jobs when it restarts, so it is asked whether this one is
+ * still there before the reader is put back on screen.
+ */
+async function restoreJob() {
+  let saved;
+  try {
+    saved = JSON.parse(localStorage.getItem(SAVED_JOB) || "null");
+  } catch { return; }
+  if (!saved || !saved.id) return;
+
+  try {
+    const response = await fetch(`/progress-once/${saved.id}`);
+    if (!response.ok) { localStorage.removeItem(SAVED_JOB); return; }
+  } catch { return; }
+
+  job = saved;
+  $("inputBox").classList.add("hidden");
+  $("readerBox").classList.remove("hidden");
+  drawReader();
+
+  // Show what the server has already rendered, so a finished reading does not
+  // claim to be still working while it waits for the first progress tick.
+  try {
+    const progress = await (await fetch(`/progress-once/${job.id}`)).json();
+    ready = progress.done;
+    if (progress.state === "ready") $("download").classList.remove("hidden");
+  } catch { /* the stream below will fill this in */ }
+
+  setStatus();
+  listenForParts(false);
 }
 
 function fail(message) {
@@ -1004,7 +1060,38 @@ voice.addEventListener("change", async () => {
   listenForParts();
 });
 
+/**
+ * Keep the text across a refresh.
+ *
+ * Closing the tab by accident, or reloading to pick up a change, should not
+ * cost a pasted chapter. The text stays in this browser and never goes to the
+ * server, which already has whatever was actually read.
+ */
+const SAVED_TEXT = "readItToMe.text";
+
+function rememberText() {
+  try {
+    if (text.value) localStorage.setItem(SAVED_TEXT, text.value);
+    else localStorage.removeItem(SAVED_TEXT);
+  } catch { /* private browsing, or storage full: not worth interrupting for */ }
+}
+
+function restoreText() {
+  try {
+    const saved = localStorage.getItem(SAVED_TEXT);
+    // Never overwrite something already in the box; the saved copy is only a
+    // fallback for a box that came up empty.
+    if (saved && !text.value) {
+      text.value = saved;
+      refreshCount();
+    }
+  } catch { /* nothing to restore */ }
+}
+
 text.addEventListener("input", refreshCount);
+text.addEventListener("input", rememberText);
+restoreText();
+restoreJob();
 speed.addEventListener("input", applySpeed);
 for (const button of $("presets").children) {
   button.addEventListener("click", () => setSpeed(Number(button.dataset.speed)));
