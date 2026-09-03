@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14121c">
+<title>Carry on reading</title>
+<style>
+  :root {
+    /* The same muted 8-bit palette the main page uses. */
+    --bg:      #14121c;
+    --panel:   #221f30;
+    --panel-2: #2c283d;
+    --ink:     #ece5d8;
+    --muted:   #8b849c;
+    --amber:   #f2b33d;
+    --amber-d: #c9821b;
+    --green:   #7bc86c;
+    --line:    #453f5c;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    /* Room for the home indicator on a phone with no bezel. */
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  h1 {
+    color: var(--amber);
+    font-size: 15px;
+    letter-spacing: 1px;
+    margin: 0;
+    text-transform: uppercase;
+  }
+  .card {
+    background: var(--panel);
+    border: 2px solid var(--line);
+    border-radius: 6px;
+    padding: 16px;
+  }
+  #title {
+    font-size: 15px;
+    line-height: 1.5;
+    margin: 0 0 6px;
+    /* A long file name must not push the controls off the screen. */
+    overflow-wrap: anywhere;
+  }
+  #where { color: var(--muted); font-size: 12px; margin: 0; }
+
+  .controls { display: flex; gap: 10px; align-items: stretch; }
+  button {
+    font: inherit;
+    font-size: 15px;
+    color: #14121c;
+    background: var(--amber);
+    border: none;
+    border-bottom: 3px solid var(--amber-d);
+    border-radius: 6px;
+    /* Big enough to hit with a thumb without looking. */
+    min-height: 56px;
+    padding: 0 18px;
+    cursor: pointer;
+  }
+  button:active { border-bottom-width: 1px; transform: translateY(2px); }
+  button:disabled { opacity: 0.5; }
+  #play { flex: 1; }
+  .step { background: var(--panel-2); color: var(--ink); border-bottom-color: #191727; }
+
+  .rates { display: flex; gap: 8px; }
+  .rates button { flex: 1; font-size: 13px; min-height: 44px; }
+  .rates button.on { outline: 2px solid var(--amber); }
+
+  #status { color: var(--muted); font-size: 12px; margin: 0; min-height: 1.4em; }
+  .bar { height: 6px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+  .bar > div { height: 100%; width: 0; background: var(--green); transition: width 0.2s; }
+</style>
+</head>
+<body>
+  <h1>Carry on reading</h1>
+
+  <div class="card">
+    <p id="title">Looking for something to read…</p>
+    <p id="where"></p>
+  </div>
+
+  <div class="bar"><div id="progress"></div></div>
+
+  <div class="controls">
+    <button class="step" id="back" disabled>&#9664;&#9664;</button>
+    <button id="play" disabled>Play</button>
+    <button class="step" id="forward" disabled>&#9654;&#9654;</button>
+  </div>
+
+  <div class="rates">
+    <button data-rate="1" class="on">1x</button>
+    <button data-rate="1.5">1.5x</button>
+    <button data-rate="2">2x</button>
+  </div>
+
+  <p id="status">Start something on your computer, then come back here.</p>
+
+<script>
+"use strict";
+
+const player = new Audio();
+player.preservesPitch = true;
+
+let spot = null;      // what the computer handed over
+let pending = null;   // a part the phone refused to start without a tap
+let index = 0;        // the part being played
+let rate = 1;
+
+const $ = (id) => document.getElementById(id);
+
+function say(text) { $("status").textContent = text; }
+
+/** Ask the server where the computer got to. */
+async function findSpot() {
+  try {
+    const response = await fetch("/handoff", { cache: "no-store" });
+    if (!response.ok) throw new Error(String(response.status));
+    return await response.json();
+  } catch {
+    say("Cannot reach the computer. Is it still on the same Wi-Fi?");
+    return null;
+  }
+}
+
+/**
+ * Show what was handed over, without starting it.
+ *
+ * Phones refuse to make sound until the person taps something, so the tap on
+ * Play is what starts it. Everything before that is only preparation.
+ */
+function show(found) {
+  spot = found;
+  index = found.index;
+
+  $("title").textContent = found.title || "Your reading";
+  $("play").disabled = false;
+  $("back").disabled = false;
+  $("forward").disabled = false;
+  updateWhere();
+
+  const seconds = Math.round(found.at);
+  say(seconds > 0
+    ? `Ready to carry on from ${seconds} seconds in. Tap Play.`
+    : "Ready. Tap Play.");
+}
+
+function updateWhere() {
+  if (!spot) return;
+  $("where").textContent = `Part ${index + 1} of ${spot.total}`;
+  $("progress").style.width = `${((index + 1) / spot.total) * 100}%`;
+}
+
+/** Play one part, picking up mid-part only where the computer left off. */
+function playPart(i, startAt) {
+  if (!spot) return;
+  if (i < 0 || i >= spot.total) { finish(); return; }
+
+  index = i;
+  updateWhere();
+
+  player.src = `/chunk/${spot.job}/${i}.wav`;
+  player.playbackRate = rate;
+  if (startAt) {
+    player.addEventListener("loadedmetadata", () => {
+      // A part may be shorter than the recorded position if the computer moved
+      // on; clamping keeps the seek inside the audio that exists.
+      player.currentTime = Math.min(startAt, player.duration || startAt);
+    }, { once: true });
+  }
+
+  player.play().then(() => {
+    $("play").textContent = "Pause";
+    say(`Part ${i + 1} of ${spot.total}`);
+  }).catch(() => {
+    // The phone refused to make sound without a tap. The position is kept so
+    // the next tap carries on from the same place rather than restarting.
+    pending = { part: i, at: startAt || 0 };
+    $("play").textContent = "Play";
+    say("Tap Play again to start the sound.");
+  });
+}
+
+function finish() {
+  player.pause();
+  $("play").textContent = "Play";
+  say("Finished.");
+}
+
+player.addEventListener("ended", () => playPart(index + 1, 0));
+player.addEventListener("error", () => {
+  // A part that is not rendered yet answers 404; waiting a moment is usually
+  // all it takes, because the computer is still working through the text.
+  if (index < (spot ? spot.total : 0)) {
+    say("Waiting for the computer to finish this part…");
+    setTimeout(() => playPart(index, 0), 1500);
+  }
+});
+
+$("play").addEventListener("click", () => {
+  if (!spot) return;
+  if (!player.paused) {
+    player.pause();
+    $("play").textContent = "Play";
+    say("Paused.");
+    return;
+  }
+  // A part the phone refused to start is retried from the same spot, so a
+  // second tap never loses the place. Otherwise the first tap resumes from
+  // the handed-over position and later taps simply carry on.
+  if (pending) {
+    const retry = pending;
+    pending = null;
+    playPart(retry.part, retry.at);
+  } else if (!player.src) {
+    playPart(index, spot.at);
+  } else {
+    player.play();
+    $("play").textContent = "Pause";
+  }
+});
+
+$("back").addEventListener("click", () => playPart(index - 1, 0));
+$("forward").addEventListener("click", () => playPart(index + 1, 0));
+
+for (const button of document.querySelectorAll(".rates button")) {
+  button.addEventListener("click", () => {
+    rate = Number(button.dataset.rate);
+    player.playbackRate = rate;
+    for (const other of document.querySelectorAll(".rates button")) {
+      other.classList.toggle("on", other === button);
+    }
+  });
+}
+
+/** Wait for the computer to hand something over, then show it. */
+async function waitForSpot() {
+  const found = await findSpot();
+  if (found && !found.waiting) { show(found); return; }
+  if (found) say("Nothing to carry on yet. Start reading on your computer.");
+  setTimeout(waitForSpot, 2000);
+}
+
+waitForSpot();
+</script>
+</body>
+</html>

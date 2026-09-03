@@ -40,6 +40,20 @@ Away from home you would also need a tunnel (Tailscale is the simplest) and the
 Mac still has to be awake — plugged in, since `womp` (wake on network) is off on
 battery.
 
+### Carry on where you left off
+
+Start something reading on the Mac — the web page, the browser extension, or
+the editor extension — then open `/continue` on your phone. It picks up the
+same text at the same spot and carries on from there.
+
+The address appears in the **ON YOUR PHONE** panel on the main page whenever
+the server is reachable from other devices, so there is no address to type.
+
+Two things worth knowing. The Mac remembers only the most recent spot, because
+this is "carry on where I left off" rather than a queue. And readings live in
+memory, so restarting the server forgets them; the phone then says there is
+nothing to carry on, instead of failing on a reading that is gone.
+
 ## Use it
 
 1. Paste your text — an article, a chapter, anything. Length does not matter.

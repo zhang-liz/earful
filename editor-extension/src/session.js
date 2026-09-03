@@ -214,8 +214,38 @@ class Session {
     }
   }
 
+  /**
+   * Tell the server where this reading has got to, so a phone can take over.
+   *
+   * Sent about once a second: often enough that picking up on another device
+   * lands in the right sentence, rare enough not to flood the server. Failure
+   * is ignored on purpose, because handing over is a convenience and must
+   * never interrupt the reading that is actually happening.
+   */
+  handOff(now) {
+    if (!this.job) return;
+    const stamp = Date.now();
+    if (this.handedOff && stamp - this.handedOff < 1000) return;
+    this.handedOff = stamp;
+
+    this.fetch(this.url("/handoff"), {
+      method: "POST",
+      headers: this.headers({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        job: this.job.id,
+        index: this.index,
+        at: now,
+        title: this.config.title || "",
+      }),
+    }).catch(() => { /* handing over is optional */ });
+  }
+
   /** Called as playback moves. Points the highlight at the spoken word. */
   time(now) {
+    // Publish before the highlight work, which gives up early on any part
+    // whose word timings have not arrived. Handing over does not need them.
+    this.handOff(now);
+
     const spans = this.spans.get(this.index);
     if (!spans || !spans.length) return;
     let found = -1;

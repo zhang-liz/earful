@@ -296,6 +296,15 @@
     textarea { min-height: 200px; font-size: 16px; } /* 16px stops iOS zooming */
     h1 { font-size: 12px; }
   }
+  .phoneUrl {
+    color: var(--amber);
+    font-size: 9px;
+    line-height: 1.9;
+    margin: 8px 0 0;
+    /* An address must wrap rather than push the panel wider. */
+    overflow-wrap: anywhere;
+    user-select: all;
+  }
 </style>
 </head>
 <body>
@@ -342,6 +351,12 @@
       </p>
       <div style="height:8px"></div>
       <button id="download" class="hidden" style="width:100%">SAVE .WAV</button>
+    </div>
+
+    <div class="box hidden" id="phonebox">
+      <p class="legend">// ON YOUR PHONE</p>
+      <p class="hint" id="phoneHint">CARRY ON WHERE YOU LEFT OFF</p>
+      <p class="phoneUrl" id="phoneUrl"></p>
     </div>
   </aside>
 
@@ -1042,6 +1057,28 @@ loadVoices();
 setSpeed(1);
 refreshCount();
 measureDock();
+
+/**
+ * Show the address to open on a phone, when there is one worth showing.
+ *
+ * Only appears when the server is actually reachable from other devices;
+ * offering a link that cannot be opened is worse than offering none.
+ */
+(async function showPhoneLink() {
+  try {
+    const response = await fetch("/phone");
+    if (!response.ok) return;
+    const phone = await response.json();
+    if (!phone.reachable || !phone.url) return;
+
+    document.getElementById("phoneUrl").textContent = phone.url;
+    document.getElementById("phonebox").classList.remove("hidden");
+    if (phone.password) {
+      document.getElementById("phoneHint").textContent =
+        "CARRY ON WHERE YOU LEFT OFF / PASSWORD NEEDED";
+    }
+  } catch { /* the link is a convenience, never a blocker */ }
+})();
 </script>
 </body>
 </html>

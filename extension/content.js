@@ -379,6 +379,31 @@
     setStatus();
   });
 
+  /**
+   * Tell the server where this reading has got to, so a phone can take over.
+   *
+   * About once a second, and never allowed to interrupt: handing over is a
+   * convenience, so a server that refuses it changes nothing here.
+   */
+  let handedOff = 0;
+  player.addEventListener("timeupdate", () => {
+    if (!job || !playing) return;
+    const stamp = Date.now();
+    if (stamp - handedOff < 1000) return;
+    handedOff = stamp;
+
+    api("/handoff", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        job: job.id,
+        index,
+        at: player.currentTime,
+        title: document.title || location.hostname,
+      }),
+    }).catch(() => { /* handing over is optional */ });
+  });
+
   player.addEventListener("ended", () => {
     clearHighlight();
     if (playing) playChunk(index + 1);

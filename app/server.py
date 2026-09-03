@@ -9,6 +9,7 @@ import json
 import os
 import queue
 import secrets
+import sys
 import threading
 import time
 import uuid
@@ -455,6 +456,100 @@ def chunk_words(job_id: str, index: int) -> dict:
         if index >= len(job.words):
             raise HTTPException(status_code=404, detail="Part not ready.")
         return {"index": index, "words": job.words[index]}
+
+
+class HandoffRequest(BaseModel):
+    """Where a reader has got to, so another device can take over."""
+
+    job: str
+    index: int = Field(default=0, ge=0)
+    at: float = Field(default=0.0, ge=0.0)
+    title: str = ""
+
+
+# The most recent handoff. One is enough: this is "carry on where I left off",
+# not a queue, and the phone that picks it up wants the latest position.
+HANDOFF: dict | None = None
+HANDOFF_LOCK = threading.Lock()
+
+
+@app.post("/handoff")
+def set_handoff(request: HandoffRequest) -> dict:
+    """Record the spot a reader has reached, for another device to resume."""
+    job = JOBS.get(request.job)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown job.")
+
+    global HANDOFF
+    with HANDOFF_LOCK:
+        HANDOFF = {
+            "job": request.job,
+            "index": min(request.index, max(job.total - 1, 0)),
+            "at": request.at,
+            "title": request.title[:200],
+            "total": job.total,
+            "when": time.time(),
+        }
+        return dict(HANDOFF)
+
+
+@app.get("/handoff")
+def get_handoff() -> dict:
+    """The spot to carry on from, or nothing if there is none to resume."""
+    with HANDOFF_LOCK:
+        spot = dict(HANDOFF) if HANDOFF else None
+
+    # A job that no longer exists cannot be resumed; the server forgets jobs
+    # when it restarts, so say so plainly rather than handing back a dead id.
+    if not spot or spot["job"] not in JOBS:
+        return {"waiting": True}
+
+    spot["waiting"] = False
+    spot["age"] = round(time.time() - spot["when"], 1)
+    return spot
+
+
+@app.get("/continue", response_class=HTMLResponse)
+def continue_page() -> str:
+    """The page a phone opens to carry on reading."""
+    return (ROOT / "app" / "continue.html").read_text()
+
+
+def _lan_address() -> str:
+    """This machine's address on the local network, or "" if it has none."""
+    import socket
+
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # Nothing is sent; connecting a UDP socket just picks the interface
+        # that would carry traffic, which is the address a phone can reach.
+        probe.connect(("192.0.2.1", 9))
+        return probe.getsockname()[0]
+    except OSError:
+        return ""
+    finally:
+        probe.close()
+
+
+# Whether the server is listening on every interface, which is what lets a
+# phone reach it. Uvicorn is told this on the command line, so it is read back
+# from there rather than guessed.
+BOUND_TO_LAN = "0.0.0.0" in sys.argv or "--host" not in sys.argv
+
+
+@app.get("/phone")
+def phone_link(request: Request) -> dict:
+    """The address to open on a phone to carry on reading."""
+    address = _lan_address()
+    port = request.url.port or 80
+    return {
+        "url": f"http://{address}:{port}/continue" if address else "",
+        # A server listening only on this machine cannot be reached by a phone
+        # however good the address is, so say so rather than offering a link
+        # that will quietly fail.
+        "reachable": bool(address) and BOUND_TO_LAN,
+        "password": bool(PASSWORD),
+    }
 
 
 @app.get("/download/{job_id}.wav")

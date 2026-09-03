@@ -242,6 +242,8 @@ async function read(whole) {
   // Each kind of file carries different marks that are meant to be seen
   // rather than heard.
   config.kind = kindFor(document.languageId, config.stripCode);
+  // Named so a phone picking this up shows the file, not a bare job id.
+  config.title = document.fileName ? document.fileName.split("/").pop() : "";
 
   player = new Player(
     config.showPlayerPanel,
