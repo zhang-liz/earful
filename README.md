@@ -144,6 +144,15 @@ After changing any of these files, go back to `chrome://extensions` and press
 the refresh arrow on the card. Chrome keeps running the old copy until you
 do.
 
+To check the extension will load before trying it:
+
+```
+python3 extension/check-manifest.py extension
+```
+
+It applies the rules Chrome applies, so an unknown permission or a bad host
+pattern is caught here rather than as a red error on the extensions page.
+
 To use it: right-click a page and choose **Read the whole page**, or select
 text and choose **Read this aloud**. `Alt+R` reads the selection. A small
 player appears at the bottom with play, skip and speed buttons.
