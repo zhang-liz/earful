@@ -159,19 +159,30 @@ def _render_one(job: Job, body: str) -> tuple[np.ndarray, list[dict]]:
     return audio, words
 
 
-def _rerun_job(job: Job, texts: list[str]) -> None:
-    """Re-speak parts that already exist, keeping the part list unchanged.
+def _rerun_job(
+    job: Job,
+    texts: list[str],
+    kept: list[bytes | None] | None = None,
+    kept_words: list[list[dict] | None] | None = None,
+) -> None:
+    """Speak a known list of parts, reusing any audio passed in `kept`.
 
-    Not _run_job: that re-chunks the text, and an edited part can have grown
-    past the chunk limit, which would change how many parts there are.
+    Not _run_job: that re-chunks the text it is given, and a part edited past
+    the chunk limit would split, changing how many parts there are.
     """
     try:
-        for body in texts:
-            audio, words = _render_one(job, body)
+        for i, body in enumerate(texts):
+            reuse = kept[i] if kept else None
+            if reuse is not None:
+                wav, words = reuse, (kept_words[i] if kept_words else [])
+                seconds = len(sf.read(io.BytesIO(reuse), dtype="float32")[0]) / SAMPLE_RATE
+            else:
+                audio, words = _render_one(job, body)
+                wav, seconds = _to_wav(audio), len(audio) / SAMPLE_RATE
             with job.lock:
-                job.chunks.append(_to_wav(audio))
-                job.words.append(words)
-                job.seconds += len(audio) / SAMPLE_RATE
+                job.chunks.append(wav)
+                job.words.append(words or [])
+                job.seconds += seconds
             job.publish()
         job.state = "ready"
     except Exception as exc:  # surfaced to the browser, not swallowed
@@ -258,36 +269,51 @@ def change_voice(job_id: str, request: RevoiceAllRequest) -> dict:
     return {"voice": job.voice, "changed": True, "total": job.total}
 
 
-class ReviceRequest(BaseModel):
+class RewriteRequest(BaseModel):
     text: str = Field(min_length=1)
 
 
-@app.post("/revoice/{job_id}/{index}")
-def revoice(job_id: str, index: int, request: ReviceRequest) -> dict:
-    """Re-render one part after its text was edited in the reader."""
+@app.post("/rewrite/{job_id}")
+def rewrite(job_id: str, request: RewriteRequest) -> dict:
+    """Replace the article, re-speaking only the parts whose text changed."""
     job = JOBS.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job.")
-    if not 0 <= index < job.total:
-        raise HTTPException(status_code=404, detail="No such part.")
 
-    body = request.text.strip()
-    if not body:
+    parts = chunk(request.text)
+    if not parts:
         raise HTTPException(status_code=400, detail="No readable text.")
 
-    audio, words = _render_one(job, body)
-    if not len(audio):
-        raise HTTPException(status_code=400, detail="Nothing to say.")
-
     with job.lock:
-        job.chunks[index] = _to_wav(audio)
-        job.words[index] = words
-        job.texts[index] = body
-        # The joined file is stale now; rebuild it on the next download.
-        stale = OUTPUT_DIR / f"{job_id}.wav"
-    stale.unlink(missing_ok=True)
+        if job.state == "running":
+            raise HTTPException(status_code=409, detail="Still reading. Try again shortly.")
+        old_texts = list(job.texts)
+        old_chunks = list(job.chunks)
+        old_words = list(job.words)
 
-    return {"index": index, "seconds": round(len(audio) / SAMPLE_RATE, 2)}
+        # Keep the audio of any part whose text is unchanged and in the same
+        # position; everything else is re-spoken.
+        kept: list[bytes | None] = []
+        kept_words: list[list[dict] | None] = []
+        for i, body in enumerate(parts):
+            same = i < len(old_texts) and old_texts[i] == body and i < len(old_chunks)
+            kept.append(old_chunks[i] if same else None)
+            kept_words.append(old_words[i] if same else None)
+
+        job.texts = parts
+        job.total = len(parts)
+        job.chunks.clear()
+        job.words.clear()
+        job.state = "running"
+        job.started = time.time()
+        job.seconds = 0.0
+
+    (OUTPUT_DIR / f"{job_id}.wav").unlink(missing_ok=True)
+    threading.Thread(
+        target=_rerun_job, args=(job, parts, kept, kept_words), daemon=True
+    ).start()
+    reused = sum(1 for c in kept if c is not None)
+    return {"total": len(parts), "texts": parts, "reused": reused}
 
 
 @app.get("/progress/{job_id}")

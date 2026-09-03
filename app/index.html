@@ -200,16 +200,13 @@
     box-shadow: 2px 0 0 var(--amber), -2px 0 0 var(--amber);
   }
 
-  /* Editing one paragraph in place. */
-  .part.editing {
-    background: var(--panel-2);
-    border-color: var(--line);
-    cursor: default;
-    padding: 10px;
-  }
+  /* Editing the whole article in place. */
+  .reader.editing { gap: 0; }
+  /* The button only opens the editor, so it is noise while open. */
+  .reader.editing ~ * #edit, .editor-open #edit { display: none; }
   .edit-box {
     width: 100%;
-    min-height: 90px;
+    min-height: 240px;
     resize: vertical;
     padding: 10px;
     background: var(--bg);
@@ -227,9 +224,6 @@
     margin: 7px 0 0;
     line-height: 1.8;
   }
-  /* While the new audio is being made, dim the paragraph. */
-  .part.revoicing { opacity: .55; }
-
   /* A blinking caret marks the part being spoken. */
   .part.now::before {
     content: "\25B6";
@@ -364,10 +358,10 @@
     </div>
 
     <div class="box hidden" id="readerBox">
-      <p class="legend">// CLICK A WORD TO JUMP &mdash; DOUBLE-CLICK TO EDIT</p>
+      <p class="legend">// CLICK A WORD TO JUMP &mdash; DOUBLE-CLICK TO EDIT ALL</p>
       <div class="reader" id="reader"></div>
       <div style="height:12px"></div>
-      <button id="edit">&#9664; REPLACE ALL TEXT</button>
+      <button id="edit">&#9998; EDIT TEXT</button>
     </div>
   </main>
 </div>
@@ -461,7 +455,7 @@ function makePart(body, i) {
   // A click on a word starts from that word; anywhere else in the part
   // starts from its beginning.
   part.addEventListener("click", (event) => {
-    if (part.classList.contains("editing")) return;
+    if (editing) return;
     const word = event.target.closest(".w");
     if (word && part.contains(word)) {
       const spans = [...part.querySelectorAll(".w")];
@@ -472,13 +466,12 @@ function makePart(body, i) {
   });
 
   // Double-click (or Enter) edits this paragraph where it sits.
-  part.addEventListener("dblclick", () => editPart(i));
+  part.addEventListener("dblclick", () => openEditor(i));
   part.addEventListener("keydown", (event) => {
-    // Enter inside the editor saves; it must not bubble up here and reopen it.
     if (event.target !== part) return;
     if (event.key === "Enter") {
       event.preventDefault();
-      editPart(i);
+      openEditor(i);
     }
   });
   return part;
@@ -492,113 +485,98 @@ function drawReader() {
 }
 
 /* ---------- editing a paragraph in place ---------- */
-let editing = -1;   // part being edited, or -1
+let editing = false;   // is the whole-article editor open
 
-function editPart(i) {
-  if (editing === i || !job) return;
-  if (editing >= 0) cancelEdit();          // only one at a time
-
-  const part = $("reader").children[i];
-  if (!part) return;
+// Double-clicking anywhere in the article opens all of it for editing, so a
+// change that spans paragraphs can be made in one go.
+function openEditor(caretPart = 0) {
+  if (editing || !job) return;
 
   player.pause();
   playing = false;
   $("toggle").innerHTML = "&#9654;";
   stopHighlight();
+  editing = true;
 
-  editing = i;
-  part.classList.add("editing");
-  part.textContent = "";
+  const reader = $("reader");
+  reader.classList.add("editing");
+  $("readerBox").classList.add("editor-open");
+  reader.textContent = "";
 
   const box = document.createElement("textarea");
   box.className = "edit-box";
-  box.value = job.texts[i];
-  box.rows = Math.max(2, Math.ceil(job.texts[i].length / 60));
+  box.value = job.texts.join("\n\n");
 
   const help = document.createElement("p");
   help.className = "edit-help";
-  help.textContent = "ENTER SAVES / SHIFT+ENTER NEW LINE / ESC CANCELS";
+  help.textContent =
+    "BLANK LINE STARTS A NEW PART / CMD+ENTER SAVES / ESC CANCELS";
 
   box.addEventListener("keydown", (event) => {
     event.stopPropagation();          // keys here belong to the editor only
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
-      saveEdit(i, box.value);
+      saveEditor(box.value);
     } else if (event.key === "Escape") {
       event.preventDefault();
-      cancelEdit();
+      closeEditor();
     }
   });
-  // Clicking away keeps what you typed rather than throwing it out.
-  box.addEventListener("blur", () => {
-    if (editing === i) saveEdit(i, box.value);
-  });
 
-  part.append(box, help);
+  reader.append(box, help);
+
+  // Put the caret at the paragraph that was double-clicked.
+  const upTo = job.texts.slice(0, caretPart).join("\n\n").length;
+  const at = caretPart > 0 ? upTo + 2 : 0;
   box.focus();
-  box.setSelectionRange(box.value.length, box.value.length);
+  box.setSelectionRange(at, at);
+  // Grow to fit the article so there is no inner scrollbar to fight.
+  box.style.height = "auto";
+  box.style.height = `${Math.min(box.scrollHeight, window.innerHeight * 0.7)}px`;
+  box.scrollTop = 0;
 }
 
-function closeEditor(i, body) {
-  const part = $("reader").children[i];
-  if (!part) return;
-  part.classList.remove("editing");
-  fillWords(part, body);
-  paintReader();
+function closeEditor() {
+  if (!editing) return;
+  editing = false;
+  $("reader").classList.remove("editing");
+  $("readerBox").classList.remove("editor-open");
+  drawReader();
+  setStatus();
 }
 
-function cancelEdit() {
-  if (editing < 0) return;
-  const i = editing;
-  editing = -1;                 // claim it before the blur fires
-  closeEditor(i, job.texts[i]);
-}
-
-async function saveEdit(i, value) {
-  // Closing the editor removes the textarea, which fires its own blur and
-  // calls back in here. Claim the edit first so the second call does nothing.
-  if (editing !== i) return;
-  editing = -1;
-
+async function saveEditor(value) {
+  if (!editing) return;
   const body = value.trim();
-  if (body === job.texts[i] || !body) {   // nothing changed, or emptied
-    closeEditor(i, job.texts[i]);
+  if (!body) { closeEditor(); return; }
+  if (body === job.texts.join("\n\n")) { closeEditor(); return; }  // untouched
+
+  editing = false;
+  $("reader").classList.remove("editing");
+  $("readerBox").classList.remove("editor-open");
+  $("statusLine").textContent = "SAVING...";
+
+  const response = await fetch(`/rewrite/${job.id}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: body })
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({ detail: response.statusText }));
+    fail(detail.detail || "Could not save the text.");
     return;
   }
 
-  job.texts[i] = body;
-  closeEditor(i, body);
-  // The old audio no longer matches the words, so re-render just this part.
-  await revoicePart(i, body);
-}
-
-// Ask the server for fresh audio for one edited part.
-async function revoicePart(i, body) {
-  const part = $("reader").children[i];
-  if (part) part.classList.add("revoicing");
-  $("statusLine").textContent = `REDOING PART ${i + 1}...`;
-  try {
-    const response = await fetch(`/revoice/${job.id}/${i}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: body })
-    });
-    if (!response.ok) {
-      const detail = await response.json().catch(() => ({ detail: response.statusText }));
-      fail(detail.detail || "Could not redo that part.");
-      return;
-    }
-    timings.delete(i);            // old word times no longer apply
-    if (i === index) {
-      player.removeAttribute("src");   // force a reload of the new audio
-      player.load();
-    }
-  } catch (error) {
-    fail(String(error));
-  } finally {
-    if (part) part.classList.remove("revoicing");
-    setStatus();
-  }
+  const result = await response.json();
+  job.texts = result.texts;
+  job.total = result.total;
+  timings.clear();
+  ready = 0; index = 0; started = false; waiting = false; pendingSeek = 0;
+  player.removeAttribute("src");
+  player.load();
+  $("download").classList.add("hidden");
+  drawReader();
+  listenForParts();
 }
 
 /* ---------- word-by-word highlight ---------- */
@@ -955,14 +933,7 @@ $("next").addEventListener("click", () => job && jumpTo(index + 1));
 $("download").addEventListener("click", () => {
   if (job) window.location.href = `/download/${job.id}.wav`;
 });
-$("edit").addEventListener("click", () => {
-  player.pause();
-  playing = false;
-  $("toggle").innerHTML = "&#9654;";
-  $("readerBox").classList.add("hidden");
-  $("inputBox").classList.remove("hidden");
-  text.focus();
-});
+$("edit").addEventListener("click", () => openEditor(index));
 
 document.addEventListener("keydown", (event) => {
   // Never steal keys from a text box, including an open paragraph editor.

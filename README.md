@@ -54,11 +54,12 @@ and marked with a caret, and **each word lights up as it is spoken**.
 **Click any word to start reading from there.** Clicking the space around the
 words starts from the top of that part.
 
-**Double-click a paragraph to edit it where it sits.** Enter saves,
-Shift+Enter adds a line, Escape cancels, and clicking away keeps what you
-typed. Only the edited paragraph is re-recorded, which takes a second or two.
-`REPLACE ALL TEXT` at the bottom is for starting over with a whole new
-document.
+**Double-click anywhere in the article to edit all of it**, in one box, with
+the caret placed where you clicked (`EDIT TEXT` does the same). A blank line
+starts a new part. Cmd+Enter (Ctrl+Enter) saves, Escape cancels.
+
+Saving re-records only the paragraphs whose text actually changed, so fixing a
+word in a long article takes a second or two rather than redoing everything.
 
 Controls live in the left sidebar:
 
