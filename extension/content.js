@@ -15,6 +15,7 @@
   let stream = null;
   let waiting = false;     // playback caught up with rendering
   let started = false;
+  let needsClick = false;   // the browser will not make sound until a click
   let raf = null;
   let litRange = null;     // the highlight currently drawn in the page
   const timings = new Map();
@@ -128,6 +129,7 @@
 
   function setStatus() {
     if (!ui || !job) return;
+    if (needsClick) { ui.setStatus("Click here to start"); return; }
     ui.setStatus(
       waiting ? "Buffering..."
         : playing ? `Part ${index + 1} / ${job.total}`
@@ -316,9 +318,36 @@
     if (at > 0) {
       player.addEventListener("loadedmetadata", () => { player.currentTime = at; }, { once: true });
     }
-    player.play().catch(() => { playing = false; ui?.setPlaying(false); });
+    start();
     followWords(i);
     setStatus();
+  }
+
+  /**
+   * Ask the audio to play, and notice when it does not.
+   *
+   * Chrome refuses to make sound until the page has been clicked. Sometimes
+   * it says so by rejecting, and sometimes it resolves and stays silent, so
+   * both have to be caught or the player sits there looking as if it works.
+   */
+  function start() {
+    const attempt = player.play();
+    if (!attempt || !attempt.then) { blocked(); return; }
+
+    attempt.then(() => {
+      const was = player.currentTime;
+      setTimeout(() => {
+        if (player.paused || player.currentTime === was) blocked();
+      }, 600);
+    }).catch(blocked);
+  }
+
+  /** Nothing is coming out. Say what to do about it. */
+  function blocked() {
+    playing = false;
+    needsClick = true;
+    ui?.setPlaying(false);
+    ui?.setStatus("Click here to start");
   }
 
   function jumpTo(i) {
@@ -330,6 +359,18 @@
     ui?.setPlaying(true);
     playChunk(i);
   }
+
+  // Real sound is coming out, so the prompt has done its job. The highlight
+  // loop stops whenever playing goes false, so it has to be started again
+  // rather than only having the flag put back.
+  player.addEventListener("playing", () => {
+    needsClick = false;
+    if (playing && raf) return;      // already running, nothing to restart
+    playing = true;
+    ui?.setPlaying(true);
+    followWords(index);
+    setStatus();
+  });
 
   player.addEventListener("ended", () => {
     clearHighlight();
@@ -350,7 +391,7 @@
     ui?.setPlaying(true);
     const loaded = player.readyState > 0 && !player.ended && player.currentTime > 0;
     if (started && loaded) {
-      player.play().catch(() => {});
+      start();
       followWords(index);
       setStatus();
     } else {
