@@ -139,6 +139,14 @@
 
   /* ---------------- highlighting inside the page ---------------- */
 
+  // Parts of a page that are furniture rather than reading: menus, sidebars,
+  // and the player's own controls.
+  const SKIP_INSIDE = `#${HOST_ID}, nav, footer, aside, [role=navigation], [aria-hidden=true]`;
+
+  // Code is punctuation when read aloud. "{\"a\":1}" becomes a minute of
+  // brace, quote, colon, so it is left out.
+  const CODE = "pre, code, kbd, samp, var";
+
   // Walk the visible text of an element into one flat string, remembering
   // which text node each character came from so a range can be rebuilt.
   function indexText(root) {
@@ -150,6 +158,9 @@
         if (parent.closest(`#${HOST_ID}, script, style, noscript`)) {
           return NodeFilter.FILTER_REJECT;
         }
+        // Code is not spoken, so it must not be indexed either. If the two
+        // disagree the highlight drifts further out of step with every word.
+        if (parent.closest(CODE)) return NodeFilter.FILTER_REJECT;
         const style = getComputedStyle(parent);
         if (style.display === "none" || style.visibility === "hidden") {
           return NodeFilter.FILTER_REJECT;
@@ -478,19 +489,39 @@
   }
 
   // The page's main text, preferring the article container when there is one.
+  /** Text worth reading, with code and repeated blocks left out. */
   function pageText() {
     const candidate =
       document.querySelector("article") ||
       document.querySelector("main") ||
       document.querySelector("[role=main]") ||
       document.body;
+
+    const blocks = candidate.querySelectorAll(
+      "p, li, h1, h2, h3, h4, h5, h6, blockquote, figcaption, dd, dt"
+    );
     const parts = [];
-    for (const node of candidate.querySelectorAll("p, li, h1, h2, h3, h4, blockquote")) {
-      if (node.closest(`#${HOST_ID}, nav, footer, aside`)) continue;
-      const text = node.innerText.trim();
-      if (text.length > 1) parts.push(text);
+    const taken = [];
+    for (const node of blocks) {
+      if (node.closest(SKIP_INSIDE)) continue;
+      if (node.closest(CODE)) continue;
+      // A <li> holding a <p> matches twice; keep the outer one only, or the
+      // sentence is read out and highlighted a second time.
+      if (taken.some((chosen) => chosen.contains(node))) continue;
+
+      const text = readable(node);
+      if (text.length > 1) { parts.push(text); taken.push(node); }
     }
-    return parts.join("\n\n") || candidate.innerText.trim();
+    return parts.join("\n\n") || readable(candidate);
+  }
+
+  /** One block's text, with any code inside it dropped. */
+  function readable(node) {
+    if (!node.querySelector(CODE)) return node.innerText.trim();
+    // Work on a copy so the page itself is never touched.
+    const copy = node.cloneNode(true);
+    for (const code of copy.querySelectorAll(CODE)) code.remove();
+    return copy.innerText.trim().replace(/\s{2,}/g, " ");
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, respond) => {

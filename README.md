@@ -140,6 +140,9 @@ To use it: right-click a page and choose **Read the whole page**, or select
 text and choose **Read this aloud**. `Alt+R` reads the selection. A small
 player appears at the bottom with play, skip and speed buttons.
 
+Menus, sidebars and footers are left out, and so is code: a `<pre>` block or
+an inline `<code>` span is punctuation when read aloud, so it is skipped.
+
 Click the toolbar icon to set the server address, the voice, and the password
 if you set one. The defaults match `./run.sh` on the same machine.
 
