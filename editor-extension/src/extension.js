@@ -93,14 +93,32 @@ function setStatus(text) {
   statusBar.show();
 }
 
-function stop() {
+/**
+ * Show a plain "Read" button whenever a file is open and nothing is playing.
+ *
+ * The title bar is not dependable: some editors built on VS Code drop an
+ * extension's title-bar buttons without reporting an error, which leaves the
+ * feature with no visible way in. The status bar is drawn from code, so it
+ * always appears. This is that guaranteed way in.
+ */
+function showIdleButton() {
+  if (!statusBar || session) return;
+  if (!editorToRead()) { statusBar.hide(); return; }
+  statusBar.text = "$(play) Read";
+  statusBar.tooltip = "Read It To Me \u2014 click to read this file out loud";
+  statusBar.show();
+}
+
+function stop(keepMessage) {
   setReading(false);
   if (session) session.stop();
   session = null;
   if (player) { player.dispose(); player = null; }
   clearHighlight();
   editor = null;
-  if (statusBar) statusBar.hide();
+  // A message explaining why reading stopped is more use than a Read button,
+  // so it is left on screen; otherwise offer the way back in.
+  if (!keepMessage) showIdleButton();
 }
 
 /** Everything the webview can tell us. */
@@ -179,7 +197,8 @@ async function read(whole) {
   });
 
   const ok = await session.start(text, firstLine);
-  if (!ok) { stop(); return; }
+  // start() has already explained the failure; leave that message showing.
+  if (!ok) { stop(true); return; }
   setReading(true);
 }
 
@@ -241,6 +260,14 @@ function activate(context) {
   statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBar.command = "readItToMe.toggle";
   context.subscriptions.push(statusBar);
+  showIdleButton();
+
+  // Follow the user from file to file, so the button is present on every
+  // file worth reading and absent everywhere else.
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(() => showIdleButton()),
+    vscode.window.onDidChangeVisibleTextEditors(() => showIdleButton())
+  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("readItToMe.readSelection", () => read(false)),

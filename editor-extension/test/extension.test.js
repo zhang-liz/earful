@@ -32,6 +32,16 @@ function makeVscode(state) {
       createStatusBarItem() {
         return state.statusBar;
       },
+      // The extension follows the user from file to file to decide whether to
+      // offer the Read button. Tests keep the handlers so they can fire them.
+      onDidChangeActiveTextEditor(handler) {
+        (state.editorChanged = state.editorChanged || []).push(handler);
+        return { dispose() {} };
+      },
+      onDidChangeVisibleTextEditors(handler) {
+        (state.visibleChanged = state.visibleChanged || []).push(handler);
+        return { dispose() {} };
+      },
       createWebviewPanel() {
         return state.panel;
       },
@@ -236,7 +246,9 @@ test("stopping clears the highlight and closes the player",
 
   state.commands["readItToMe.stop"]();
   assert.ok(state.disposed, "the player panel should be closed");
-  assert.ok(!state.statusBar.shown, "the status bar should go away");
+  // Stopping leaves the way back in: the button returns to its resting state
+  // rather than vanishing, so the file can be read again without the palette.
+  assert.match(state.statusBar.text, /Read/, "the Read button should return");
 
   const last = state.editor.decorations.slice(-2);
   for (const { ranges } of last) {

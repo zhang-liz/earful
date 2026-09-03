@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "publisher": "local",
   "engines": {
-    "vscode": "^1.75.0"
+    "vscode": "^1.84.0"
   },
   "categories": [
     "Other"
@@ -85,62 +85,32 @@
       "editor/title": [
         {
           "command": "readItToMe.readFile",
-          "when": "!readItToMe.reading && (editorIsOpen && !(activeWebviewPanelId == 'markdown.preview' || activeCustomEditorId == 'vscode.markdown.preview.editor'))",
-          "group": "navigation@90"
-        },
-        {
-          "command": "readItToMe.readFile",
-          "when": "!readItToMe.reading && (activeWebviewPanelId == 'markdown.preview' || activeCustomEditorId == 'vscode.markdown.preview.editor')",
+          "when": "!readItToMe.reading",
           "group": "navigation@90"
         },
         {
           "command": "readItToMe.previous",
-          "when": "readItToMe.reading && (editorIsOpen && !(activeWebviewPanelId == 'markdown.preview' || activeCustomEditorId == 'vscode.markdown.preview.editor'))",
-          "group": "navigation@90"
-        },
-        {
-          "command": "readItToMe.previous",
-          "when": "readItToMe.reading && (activeWebviewPanelId == 'markdown.preview' || activeCustomEditorId == 'vscode.markdown.preview.editor')",
+          "when": "readItToMe.reading",
           "group": "navigation@90"
         },
         {
           "command": "readItToMe.toggle",
-          "when": "readItToMe.reading && (editorIsOpen && !(activeWebviewPanelId == 'markdown.preview' || activeCustomEditorId == 'vscode.markdown.preview.editor'))",
-          "group": "navigation@91"
-        },
-        {
-          "command": "readItToMe.toggle",
-          "when": "readItToMe.reading && (activeWebviewPanelId == 'markdown.preview' || activeCustomEditorId == 'vscode.markdown.preview.editor')",
+          "when": "readItToMe.reading",
           "group": "navigation@91"
         },
         {
           "command": "readItToMe.next",
-          "when": "readItToMe.reading && (editorIsOpen && !(activeWebviewPanelId == 'markdown.preview' || activeCustomEditorId == 'vscode.markdown.preview.editor'))",
-          "group": "navigation@92"
-        },
-        {
-          "command": "readItToMe.next",
-          "when": "readItToMe.reading && (activeWebviewPanelId == 'markdown.preview' || activeCustomEditorId == 'vscode.markdown.preview.editor')",
+          "when": "readItToMe.reading",
           "group": "navigation@92"
         },
         {
           "command": "readItToMe.speed",
-          "when": "readItToMe.reading && (editorIsOpen && !(activeWebviewPanelId == 'markdown.preview' || activeCustomEditorId == 'vscode.markdown.preview.editor'))",
-          "group": "navigation@93"
-        },
-        {
-          "command": "readItToMe.speed",
-          "when": "readItToMe.reading && (activeWebviewPanelId == 'markdown.preview' || activeCustomEditorId == 'vscode.markdown.preview.editor')",
+          "when": "readItToMe.reading",
           "group": "navigation@93"
         },
         {
           "command": "readItToMe.stop",
-          "when": "readItToMe.reading && (editorIsOpen && !(activeWebviewPanelId == 'markdown.preview' || activeCustomEditorId == 'vscode.markdown.preview.editor'))",
-          "group": "navigation@94"
-        },
-        {
-          "command": "readItToMe.stop",
-          "when": "readItToMe.reading && (activeWebviewPanelId == 'markdown.preview' || activeCustomEditorId == 'vscode.markdown.preview.editor')",
+          "when": "readItToMe.reading",
           "group": "navigation@94"
         }
       ],
