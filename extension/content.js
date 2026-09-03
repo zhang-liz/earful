@@ -302,6 +302,10 @@
     if (!job) return;
     if (i < 0) i = 0;
     if (i >= job.total) {
+      // Past the last part. Stop for real, so the element does not sit there
+      // reporting that it is still playing.
+      player.pause();
+      clearHighlight();
       playing = false;
       index = job.total;
       ui?.setPlaying(false);
@@ -353,10 +357,12 @@
   function jumpTo(i) {
     if (!job) return;
     i = Math.max(0, Math.min(i, job.total - 1));
-    if (i >= ready) return;
     started = true;
     playing = true;
     ui?.setPlaying(true);
+    // A part the server has not finished is not a dead end: playChunk holds
+    // there and starts it as soon as it arrives. Refusing here made the
+    // skip buttons look broken while the rest was still being written.
     playChunk(i);
   }
 
@@ -468,13 +474,10 @@
       started = true;
       playing = true;
       ui?.setPlaying(true);
+      // playChunk already asks it to play, and does so through start(),
+      // which notices a browser that resolves the request but stays silent.
+      // Calling play() again here bypassed that check.
       playChunk(0);
-      player.play().catch(() => {          // autoplay refused: wait for a click
-        playing = false;
-        started = false;
-        ui?.setPlaying(false);
-        setStatus();
-      });
     } else if (waiting && ready > index) {
       playChunk(index);
     }
