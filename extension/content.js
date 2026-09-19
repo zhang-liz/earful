@@ -7,7 +7,7 @@
 
   const HOST_ID = "read-it-to-me-root";
 
-  let config = { server: "http://127.0.0.1:8888", password: "", voice: "am_michael", speed: 1 };
+  let config = { server: "http://127.0.0.1:8888", password: "", voice: "af_heart", speed: 1 };
   let job = null;          // { id, total, texts }
   let ready = 0;           // parts the server has finished
   let index = 0;           // part being played

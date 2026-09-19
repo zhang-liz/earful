@@ -177,8 +177,8 @@
         },
         "readItToMe.voice": {
           "type": "string",
-          "default": "am_michael",
-          "description": "Voice id, for example am_michael."
+          "default": "af_heart",
+          "description": "Voice id, for example af_heart."
         },
         "readItToMe.speed": {
           "type": "number",

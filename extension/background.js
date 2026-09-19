@@ -1,7 +1,7 @@
 // Wires the right-click menu, the toolbar button and the keyboard shortcut
 // to the content script that does the reading.
 
-const DEFAULTS = { server: "http://127.0.0.1:8888", password: "", voice: "am_michael", speed: 1 };
+const DEFAULTS = { server: "http://127.0.0.1:8888", password: "", voice: "af_heart", speed: 1 };
 
 async function settings() {
   return { ...DEFAULTS, ...(await chrome.storage.sync.get(Object.keys(DEFAULTS))) };

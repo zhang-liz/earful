@@ -78,7 +78,7 @@ In your editor's settings, search for "Read It To Me":
 | --- | --- |
 | `readItToMe.server` | Where the server is. Default `http://127.0.0.1:8888`. |
 | `readItToMe.password` | Only if you started the server with `TTS_PASSWORD`. |
-| `readItToMe.voice` | Which voice, for example `am_michael`. |
+| `readItToMe.voice` | Which voice, for example `af_heart`. |
 | `readItToMe.speed` | Starting speed. You can change it while it reads. |
 | `readItToMe.stripCode` | Skip brackets and comment markers in source files. On by default. |
 | `readItToMe.showPlayerPanel` | Show the audio panel beside the file. Off by default; the controls are on the file's own title bar. |

@@ -34,7 +34,7 @@ VOICES: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
-DEFAULT_VOICE = "am_michael"
+DEFAULT_VOICE = "af_heart"
 
 # Splitting a chunk: try paragraph breaks, then sentence ends, then any space.
 _PARAGRAPH_SPLIT = re.compile(r"\n\s*\n")

@@ -1,7 +1,7 @@
 // Settings and quick controls. The popup cannot touch the page itself, so
 // every action is relayed through the background worker.
 
-const DEFAULTS = { server: "http://127.0.0.1:8888", password: "", voice: "am_michael", speed: 1 };
+const DEFAULTS = { server: "http://127.0.0.1:8888", password: "", voice: "af_heart", speed: 1 };
 const $ = (id) => document.getElementById(id);
 
 async function load() {
