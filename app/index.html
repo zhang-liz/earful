@@ -868,8 +868,18 @@ player.addEventListener("timeupdate", () => {
 // without having to press play on the computer first.
 player.addEventListener("loadeddata", () => handOff(true));
 
-function toggle() {
-  if (!job || editing) return;
+async function toggle() {
+  if (!job) return;
+  // Pressing play with the editor open means "read what I typed". Save it, as
+  // a voice change does, rather than ignoring the press.
+  if (editing) {
+    const box = $("reader").querySelector(".edit-box");
+    const typed = box ? box.value.trim() : "";
+    const changed = typed !== "" && typed !== job.texts.join("\n\n");
+    await saveEditor(typed);
+    if (editing) return;               // the save failed; keep the editor
+    if (changed) return;               // re-reading; the first part starts itself
+  }
   if (playing) {
     player.pause();
     playing = false;
