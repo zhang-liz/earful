@@ -137,6 +137,11 @@
     padding: 2px;
     margin: 10px 0 8px;
   }
+  /* The gaps cannot shrink, so a long article with one cell per part would
+     push the player wider than the sidebar and over the text. Drop the gaps
+     once there are many cells, and never let the meter widen its panel. */
+  .meter { min-width: 0; overflow: hidden; }
+  .meter.dense { gap: 0; }
   .meter i { flex: 1; background: var(--shadow); }
   .meter i.lit { background: var(--green); }
   .stat { font-size: 8px; color: var(--muted); line-height: 1.9; }
@@ -718,6 +723,7 @@ function drawMeter() {
   if (meter.children.length !== job.total) {
     meter.textContent = "";
     for (let i = 0; i < job.total; i++) meter.append(document.createElement("i"));
+    meter.classList.toggle("dense", job.total > 40);
   }
   [...meter.children].forEach((cell, i) => cell.classList.toggle("lit", i < ready));
 }
