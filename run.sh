@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the Read It To Me server, then open it in your browser.
+# Start the Earful server, then open it in your browser.
 #
 #   ./run.sh              this Mac only
 #   ./run.sh --lan        also reachable from your phone on the same Wi-Fi

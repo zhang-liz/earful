@@ -1,4 +1,4 @@
-# Read It To Me
+# Earful
 
 Paste text. Get it read aloud in a natural human voice. Everything runs on your
 own Mac — no accounts, no API keys, no internet after the first run.

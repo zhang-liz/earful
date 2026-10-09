@@ -426,7 +426,7 @@ test("messages arriving after stop are ignored rather than throwing",
 
 test("activation writes a line to its output channel, so it can be checked", () => {
   const { state } = loadExtension(SAMPLE);
-  assert.strictEqual(state.logName, "Read It To Me");
+  assert.strictEqual(state.logName, "Earful");
   assert.ok(state.logged.some((line) => line.includes("Ready")),
     "should record that it started");
 });

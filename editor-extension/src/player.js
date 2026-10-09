@@ -196,7 +196,7 @@ class Player {
 
     this.panel = vscode.window.createWebviewPanel(
       VIEW_TYPE,
-      "Read It To Me",
+      "Earful",
       where,
       { enableScripts: true, retainContextWhenHidden: true }
     );

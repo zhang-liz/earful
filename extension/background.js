@@ -32,7 +32,7 @@ async function ensureContentScript(tabId) {
       await chrome.scripting.insertCSS({ target: { tabId }, files: ["content.css"] });
       return true;
     } catch (error) {
-      console.warn("Read It To Me: cannot run on this page.", error);
+      console.warn("Earful: cannot run on this page.", error);
       return false;
     }
   }
@@ -43,7 +43,7 @@ async function send(tabId, message) {
   try {
     await chrome.tabs.sendMessage(tabId, { ...message, settings: await settings() });
   } catch (error) {
-    console.warn("Read It To Me:", error);
+    console.warn("Earful:", error);
   }
 }
 

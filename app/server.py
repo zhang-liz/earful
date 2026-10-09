@@ -76,7 +76,7 @@ async def require_password(request: Request, call_next):
     return Response(
         status_code=401,
         content="Password required.",
-        headers={"WWW-Authenticate": 'Basic realm="Read It To Me"'},
+        headers={"WWW-Authenticate": 'Basic realm="Earful"'},
     )
 
 
@@ -229,6 +229,12 @@ def _rerun_job(
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     return (ROOT / "app" / "index.html").read_text()
+
+
+@app.get("/icon.png")
+def icon() -> FileResponse:
+    """The Earful logo, for the browser tab and a phone's Home Screen."""
+    return FileResponse(ROOT / "app" / "icon.png", media_type="image/png")
 
 
 @app.get("/voices")

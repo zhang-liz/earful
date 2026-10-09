@@ -1,4 +1,4 @@
-// Read It To Me, for VS Code and the editors built on it (Cursor,
+// Earful, for VS Code and the editors built on it (Cursor,
 // Antigravity). Sends the text you are looking at to your own server and
 // reads it back, lighting each word in the editor as it is spoken.
 
@@ -96,7 +96,7 @@ function setStatus(text) {
   // Clicking it plays or pauses, so the commonest control is always one
   // click away without leaving the file.
   statusBar.text = `$(unmute) ${text}`;
-  statusBar.tooltip = "Read It To Me \u2014 click to play or pause";
+  statusBar.tooltip = "Earful \u2014 click to play or pause";
   statusBar.show();
   for (const item of transport) item.show();
 }
@@ -115,7 +115,7 @@ function showIdleButton() {
   for (const item of transport) item.hide();
   if (!somethingToRead()) { statusBar.hide(); return; }
   statusBar.text = "$(play) Read";
-  statusBar.tooltip = "Read It To Me \u2014 click to read this file out loud";
+  statusBar.tooltip = "Earful \u2014 click to read this file out loud";
   statusBar.show();
 }
 
@@ -318,7 +318,7 @@ function activate(context) {
   // A one-line note that activation happened, so a problem in a real editor
   // can be told apart from the extension never starting at all.
   try {
-    const channel = vscode.window.createOutputChannel("Read It To Me");
+    const channel = vscode.window.createOutputChannel("Earful");
     channel.appendLine(`Ready. Server: ${settings().server}`);
     context.subscriptions.push(channel);
     log = channel;
@@ -340,7 +340,7 @@ function activate(context) {
     const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, priority);
     item.command = `readItToMe.${name}`;
     item.text = icon;
-    item.tooltip = `Read It To Me \u2014 ${name}`;
+    item.tooltip = `Earful \u2014 ${name}`;
     transport.push(item);
     context.subscriptions.push(item);
   }

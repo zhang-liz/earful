@@ -82,7 +82,7 @@
         .close { margin-left: 2px; }
         .speeds { display: flex; gap: 5px; }
       </style>
-      <div class="bar" role="region" aria-label="Read It To Me">
+      <div class="bar" role="region" aria-label="Earful">
         <button class="play" id="play" title="Play or pause">&#9654;</button>
         <button id="prev" title="Previous part">&#9198;</button>
         <button id="next" title="Next part">&#9197;</button>

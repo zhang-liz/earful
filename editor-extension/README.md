@@ -1,9 +1,9 @@
-# Read It To Me — for VS Code, Cursor and Antigravity
+# Earful — for VS Code, Cursor and Antigravity
 
 Reads the file you are looking at aloud in a natural voice, and lights up each
 word in the editor as it is spoken.
 
-It talks to the Read It To Me server in the folder above this one, so the
+It talks to the Earful server in the folder above this one, so the
 voice runs on your own machine and nothing is sent anywhere else.
 
 ## Install
@@ -72,7 +72,7 @@ Other ways in:
 
 ## Settings
 
-In your editor's settings, search for "Read It To Me":
+In your editor's settings, search for "Earful":
 
 | Setting | What it does |
 | --- | --- |
@@ -101,7 +101,7 @@ itself rather than losing its middle.
 
 ## If nothing happens
 
-Open the **Read It To Me** output channel (View, then Output, then pick it
+Open the **Earful** output channel (View, then Output, then pick it
 from the list). It says whether the extension started and what went wrong.
 
 Two things account for almost every problem:
