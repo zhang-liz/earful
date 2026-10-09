@@ -44,5 +44,6 @@ if command -v tailscale >/dev/null 2>&1; then
   fi
 fi
 
-( sleep 3; open "http://127.0.0.1:${PORT}" ) &
+# The Mac app opens the page itself once the server answers.
+[[ -z "${NO_OPEN:-}" ]] && ( sleep 3; open "http://127.0.0.1:${PORT}" ) &
 exec uv run uvicorn app.server:app --host "$HOST" --port "$PORT"
