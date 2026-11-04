@@ -13,3 +13,7 @@ output/
 # Editor extension build output
 editor-extension/*.vsix
 editor-extension/node_modules/
+
+# Test tools
+node_modules/
+.pytest_cache/

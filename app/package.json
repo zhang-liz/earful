@@ -1,0 +1,10 @@
+{
+  "name": "earful-page-tests",
+  "private": true,
+  "scripts": {
+    "test": "node --test --test-concurrency=1 \"test/*.test.js\""
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}
