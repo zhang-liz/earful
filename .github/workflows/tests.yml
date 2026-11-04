@@ -44,7 +44,9 @@ jobs:
 
       - name: Start the server
         run: |
-          uv run uvicorn app.server:app --port 8888 > server.log 2>&1 &
+          # Not through uv run: it would hold uv's cache lock while the server
+          # runs, and uv's cleanup at the end of the job would wait and then fail.
+          .venv/bin/python -m uvicorn app.server:app --port 8888 > server.log 2>&1 &
           curl --silent --output /dev/null --retry 60 --retry-delay 2 --retry-all-errors \
             http://127.0.0.1:8888/voices
 
