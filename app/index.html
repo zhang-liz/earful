@@ -989,10 +989,10 @@ function listenForParts(autoplay = true) {
       started = true;
       playing = true;
       $("toggle").innerHTML = "&#10074;&#10074;";
-      playChunk(0);
+      playChunk(index);
       // If the browser refused to start (no click yet, common right after a
       // save), show it as paused so the play button reads correctly.
-      player.play().then(() => {}).catch((error) => {
+      if (!waiting) player.play().then(() => {}).catch((error) => {
         if (error.name === "AbortError") return;   // a newer jump replaced it
         playing = false;
         started = false;
@@ -1280,9 +1280,11 @@ voice.addEventListener("change", async () => {
   rememberJob();
   if (!result.changed) { setStatus(); return; }
 
-  // Start over: the old audio is gone and the new parts arrive one by one.
+  // The old audio is gone and the new parts arrive one by one, from the top.
+  // Stay on the same part, and carry on when it arrives.
   $("download").classList.add("hidden");
-  ready = 0; index = 0; started = false; waiting = false; pendingSeek = 0;
+  if (index >= job.total) index = 0;   // it had finished: start again
+  ready = 0; started = false; waiting = false; pendingSeek = 0;
   player.removeAttribute("src");
   player.load();
   listenForParts();
