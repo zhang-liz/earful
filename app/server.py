@@ -599,6 +599,11 @@ def _tailscale() -> dict:
     except json.JSONDecodeError:
         return {"name": "", "proxied": False}
 
+    # Tailscale answers even while switched off, naming a machine nobody can
+    # reach. Only a running backend is an address worth offering.
+    if status.get("BackendState") != "Running":
+        return {"name": "", "proxied": False}
+
     self_node = status.get("Self") or {}
     # DNSName arrives with a trailing dot, which belongs in DNS but not a URL.
     full = (self_node.get("DNSName") or "").strip().rstrip(".")
