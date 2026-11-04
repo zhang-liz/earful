@@ -186,3 +186,15 @@ test("a voice the server says is unchanged keeps SAVE .WAV", async () => {
   assert.ok(!page.$("download").classList.contains("hidden"));
   await page.close();
 });
+
+test("opening the editor while playing says paused", async () => {
+  const page = await open();
+  await page.read("One.\n\nTwo.");
+  await page.rendered(2, 2, "ready");
+  await page.tick();
+  assert.strictEqual(page.status(), "PART 1 / 2");
+
+  page.$("edit").click();
+  assert.strictEqual(page.status(), "PAUSED");
+  await page.close();
+});
