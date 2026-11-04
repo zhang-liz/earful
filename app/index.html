@@ -520,6 +520,7 @@ let fitEditor = null;  // the open editor's resize handler
 function openEditor(caretPart = 0) {
   if (editing || !job) return;
 
+  stopSample();
   player.pause();
   playing = false;
   waiting = false;     // or the part being waited for starts under the editor
@@ -803,6 +804,7 @@ function jumpTo(i, at = 0) {
   if (!job) return;
   i = Math.max(0, Math.min(i, job.total - 1));   // stay inside the article
   if (i >= ready) return;               // not rendered yet
+  stopSample();
   started = true;
   playing = true;
   $("toggle").innerHTML = "&#10074;&#10074;";
@@ -908,6 +910,7 @@ player.addEventListener("loadeddata", () => handOff(true));
 
 async function toggle() {
   if (!job) return;
+  stopSample();
   // Pressing play with the editor open means "read what I typed". Save it, as
   // a voice change does, rather than ignoring the press.
   if (editing) {
@@ -1149,6 +1152,15 @@ function fail(message) {
   $("readerError").classList.toggle("hidden", !job);
 }
 
+let sampleAudio = null;          // the voice sample now playing
+let resumeAfterSample = false;   // the reading was playing when it started
+
+function stopSample() {
+  if (sampleAudio) sampleAudio.pause();
+  sampleAudio = null;
+  resumeAfterSample = false;
+}
+
 async function sample() {
   $("sample").disabled = true;
   const line = "This is how I sound. I can read your whole article in this voice.";
@@ -1165,10 +1177,27 @@ async function sample() {
     $("sample").disabled = false;
   }
   if (!response.ok) return;
-  const audio = new Audio(URL.createObjectURL(await response.blob()));
+  const url = URL.createObjectURL(await response.blob());
+
+  // One voice at a time: hold the reading, and carry on when the sample ends.
+  const resume = resumeAfterSample || playing;
+  stopSample();
+  if (playing) toggle();
+  resumeAfterSample = resume;
+
+  const audio = new Audio(url);
+  sampleAudio = audio;
+  const done = () => {
+    if (sampleAudio !== audio) return;   // replaced or stopped already
+    sampleAudio = null;
+    const carryOn = resumeAfterSample;
+    resumeAfterSample = false;
+    if (carryOn && !playing && !editing) toggle();
+  };
+  audio.addEventListener("ended", done);
   audio.preservesPitch = true;
   audio.playbackRate = Number(speed.value);
-  audio.play();
+  audio.play().catch(done);
 }
 
 /* ---------- wiring ---------- */
@@ -1185,6 +1214,7 @@ voice.addEventListener("change", async () => {
   }
   const chosen = voice.value;
   if (chosen === job.voice) return;    // already reading in this voice
+  stopSample();
   player.pause();
   playing = false;
   waiting = false;
