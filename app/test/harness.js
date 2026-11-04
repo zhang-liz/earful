@@ -8,7 +8,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { JSDOM } = require("jsdom");
 
-const HTML = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+const page = (name) => fs.readFileSync(path.join(__dirname, "..", name), "utf8");
 
 const tick = (ms = 5) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -16,6 +16,7 @@ const tick = (ms = 5) => new Promise((resolve) => setTimeout(resolve, ms));
  * Open the page.
  *
  * @param {object} options
+ * @param {string}   [options.page]   which page, if not index.html
  * @param {Function} [options.fetch]  replaces the fake server's answers
  * @param {object}   [options.saved]  localStorage to start with
  * @param {object}   [options.answers]  what a GET of a url answers, by url
@@ -70,7 +71,7 @@ async function open(options = {}) {
 
   if (options.progress) state.progress = options.progress;
 
-  const dom = new JSDOM(HTML, {
+  const dom = new JSDOM(page(options.page || "index.html"), {
     url: "http://127.0.0.1:8888/",
     runScripts: "dangerously",
     pretendToBeVisual: true,

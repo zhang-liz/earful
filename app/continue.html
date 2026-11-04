@@ -258,7 +258,8 @@ $("play").addEventListener("click", () => {
   }
 });
 
-$("back").addEventListener("click", () => playPart(index - 1, 0));
+// On the first part there is nothing before it, so start that part again.
+$("back").addEventListener("click", () => playPart(Math.max(index - 1, 0), 0));
 $("forward").addEventListener("click", () => playPart(index + 1, 0));
 
 for (const button of document.querySelectorAll(".rates button")) {
