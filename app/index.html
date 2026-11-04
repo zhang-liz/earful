@@ -525,6 +525,7 @@ function openEditor(caretPart = 0) {
   waiting = false;     // or the part being waited for starts under the editor
   $("toggle").innerHTML = "&#9654;";
   stopHighlight();
+  setStatus();
   editing = true;
 
   const reader = $("reader");
