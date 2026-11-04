@@ -414,6 +414,7 @@
     if (playing) {
       player.pause();
       playing = false;
+      waiting = false;       // or the part starts by itself when it arrives
       if (raf) { cancelAnimationFrame(raf); raf = null; }
       ui?.setPlaying(false);
       setStatus();
@@ -421,13 +422,16 @@
     }
     playing = true;
     ui?.setPlaying(true);
-    const loaded = player.readyState > 0 && !player.ended && player.currentTime > 0;
+    // The audio may still hold an earlier part, if pause came during a wait.
+    const current = player.getAttribute("src") === `${config.server}/chunk/${job.id}/${index}.wav`;
+    const loaded = current && player.readyState > 0 && !player.ended && player.currentTime > 0;
     if (started && loaded) {
       start();
       followWords(index);
       setStatus();
     } else {
       started = true;
+      if (index >= job.total) index = 0;   // finished: start again from the top
       playChunk(index);
     }
   }
