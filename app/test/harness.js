@@ -88,17 +88,35 @@ async function open(options = {}) {
           state.audio = this;
         }
         get src() { return this.attrs.src || ""; }
-        set src(value) { this.attrs.src = value; this.currentTime = 0; this.ended = false; }
+        set src(value) {
+          this.interrupt();
+          this.attrs.src = value;
+          this.currentTime = 0;
+          this.ended = false;
+        }
         getAttribute(name) { return this.attrs[name] ?? null; }
         removeAttribute(name) { delete this.attrs[name]; }
-        load() { this.currentTime = 0; this.ended = false; }
+        load() { this.interrupt(); this.currentTime = 0; this.ended = false; }
         play() {
           state.plays.push(this.attrs.src);
           this.paused = false;
           this.readyState = 4;
-          return Promise.resolve();
+          // As in a browser, the promise settles once the audio has started,
+          // and a new load or a pause before then rejects it.
+          return new Promise((resolve, reject) => {
+            const starting = { reject };
+            this.starting = starting;
+            realTimeout(() => {
+              if (this.starting === starting) { this.starting = null; resolve(); }
+            }, 1);
+          });
         }
-        pause() { this.paused = true; }
+        pause() { this.interrupt(); this.paused = true; }
+        interrupt() {
+          if (!this.starting) return;
+          this.starting.reject(new window.DOMException("Interrupted.", "AbortError"));
+          this.starting = null;
+        }
         /** The part has played to its end. */
         finish() {
           this.ended = true;

@@ -791,7 +791,13 @@ function playChunk(i, at = 0) {
   // target instead of adding a listener per jump: a rapid second jump would
   // otherwise leave an earlier listener pending and seek twice.
   pendingSeek = at;
-  player.play().catch(() => { playing = false; $("toggle").innerHTML = "&#9654;"; });
+  player.play().catch((error) => {
+    // A newer jump cancels a play that is still starting. That is not a stop.
+    if (error.name === "AbortError") return;
+    playing = false;
+    $("toggle").innerHTML = "&#9654;";
+    setStatus();
+  });
   startHighlight(i);
   setStatus();
   // Keep the spoken part in view without yanking the page around.
@@ -971,7 +977,8 @@ function listenForParts(autoplay = true) {
       playChunk(0);
       // If the browser refused to start (no click yet, common right after a
       // save), show it as paused so the play button reads correctly.
-      player.play().then(() => {}).catch(() => {
+      player.play().then(() => {}).catch((error) => {
+        if (error.name === "AbortError") return;   // a newer jump replaced it
         playing = false;
         started = false;
         $("toggle").innerHTML = "&#9654;";

@@ -184,7 +184,8 @@ function playPart(i, startAt) {
     retries = 0;                 // this part arrived; a later stall starts fresh
     $("play").textContent = "Pause";
     say(`Part ${i + 1} of ${spot.total}`);
-  }).catch(() => {
+  }).catch((error) => {
+    if (error.name === "AbortError") return;   // a newer skip replaced this part
     // The phone refused to make sound without a tap. The position is kept so
     // the next tap carries on from the same place rather than restarting.
     pending = { part: i, at: startAt || 0 };

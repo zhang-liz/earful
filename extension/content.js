@@ -343,7 +343,9 @@
       setTimeout(() => {
         if (player.paused || player.currentTime === was) blocked();
       }, 600);
-    }).catch(blocked);
+    }).catch((error) => {
+      if (error.name !== "AbortError") blocked();   // a newer skip cancels a play
+    });
   }
 
   /** Nothing is coming out. Say what to do about it. */
