@@ -1079,7 +1079,12 @@ async function restoreJob() {
   if (progress.state === "ready") $("download").classList.remove("hidden");
 
   setStatus();
-  handOff(true);
+  // This page has just come back at the start. A spot the phone already has
+  // for this reading is further along, so only offer one if there is none.
+  try {
+    const spot = await (await fetch("/handoff", { cache: "no-store" })).json();
+    if (spot.job !== job.id) handOff(true);
+  } catch { /* handing over is optional */ }
   listenForParts(false);
 }
 
