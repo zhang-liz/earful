@@ -64,9 +64,9 @@ test("reading twice does not leave two pollers running", async () => {
   await settle(100);
 
   const before = s.state.polls;
-  await settle(1000);                     // one poll per 900ms
+  await settle(600);                      // the harness polls every 30ms
   const rate = s.state.polls - before;
-  assert.ok(rate <= 2, `expected about one poll, got ${rate}: pollers are stacking`);
+  assert.ok(rate <= 30, `expected about 20 polls, got ${rate}: pollers are stacking`);
 });
 
 test("losing the server says so instead of failing quietly", async () => {
@@ -77,17 +77,6 @@ test("losing the server says so instead of failing quietly", async () => {
   s.state.broken = true;
   await settle(1000);
   assert.match(h.status(), /Lost the server/);
-});
-
-test("the progress stream is closed when reading stops", async () => {
-  const s = server();
-  const h = load(PAGE, { fetch: s.fetch });
-  await h.send({ type: "read-page", settings: {} });   // no password: EventSource
-  await settle();
-  assert.ok(h.state.eventSource, "a stream should have been opened");
-
-  await h.send({ type: "stop", settings: {} });
-  assert.ok(h.state.eventSource.closed, "the stream should be closed");
 });
 
 test("closing the player stops the polling too", async () => {

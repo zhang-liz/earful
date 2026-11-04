@@ -153,19 +153,26 @@ test("settings sent with the message are used", async () => {
   assert.strictEqual(JSON.parse(speak.options.body).voice, "af_heart");
 });
 
-test("a password is sent as an Authorization header", async () => {
-  const s = server();
-  const h = load(PAGE, { fetch: s.fetch });
-  await h.send({ type: "read-page", settings: { password: "hunter2" } });
-  await settle();
-
-  const speak = s.sent.find((r) => r.url.endsWith("/speak"));
-  assert.ok(speak.options.headers.Authorization, "should carry the password");
-  assert.match(speak.options.headers.Authorization, /^Basic /);
-});
-
 test("a ping is answered, so the worker knows the script is there", async () => {
   const h = load(PAGE, { fetch: server().fetch });
   const reply = await h.send({ type: "ping" });
   assert.deepEqual(reply, { ok: true });
+});
+
+test("calls to the server go through the background worker, not this page", async () => {
+  const s = server();
+  const h = load(PAGE, { fetch: s.fetch });
+  h.context.fetch = () => { throw new Error("the page's own fetch is held to the page's rules"); };
+  const asked = [];
+  const relay = h.context.chrome.runtime.sendMessage;
+  h.context.chrome.runtime.sendMessage = (message) => {
+    asked.push(message.path);
+    h.context.fetch = s.fetch;
+    const answer = relay(message);
+    h.context.fetch = () => { throw new Error("the page's own fetch is held to the page's rules"); };
+    return answer;
+  };
+  await h.send({ type: "read-page", settings: {} });
+  await settle();
+  assert.ok(asked.includes("/speak"), "the reading should be asked for through the worker");
 });

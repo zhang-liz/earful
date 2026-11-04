@@ -12,8 +12,7 @@
   let ready = 0;           // parts the server has finished
   let index = 0;           // part being played
   let playing = false;
-  let stream = null;
-  let poller = null;       // used instead of a stream when a password is set
+  let poller = null;       // asks the server how far along it is
   let waiting = false;     // playback caught up with rendering
   let started = false;
   let needsClick = false;   // the browser will not make sound until a click
@@ -30,19 +29,19 @@
 
   /* ---------------- server ---------------- */
 
-  function headers(extra = {}) {
-    const out = { ...extra };
-    if (config.password) {
-      out.Authorization = "Basic " + btoa(":" + config.password);
-    }
-    return out;
-  }
-
+  /** Call the server through the background worker. Answers like fetch does. */
   async function api(path, options = {}) {
-    return fetch(config.server + path, {
-      ...options,
-      headers: headers(options.headers || {}),
-    });
+    const answer = await chrome.runtime.sendMessage({ type: "api", path, options });
+    if (!answer || answer.failed) throw new Error(answer?.failed || "No answer.");
+    return {
+      ok: answer.ok,
+      status: answer.status,
+      statusText: answer.statusText,
+      json: async () => {
+        if (answer.body === null) throw new Error("Not JSON.");
+        return answer.body;
+      },
+    };
   }
 
   /* ---------------- the floating player ---------------- */
@@ -476,34 +475,26 @@
 
   function listen() {
     stopListening();
-    // EventSource cannot carry an Authorization header, so poll instead when a
-    // password is set. Polling is cheap: one small JSON per second.
-    if (config.password) {
-      poller = setInterval(async () => {
-        if (!job) { stopListening(); return; }
-        try {
-          const response = await api(`/progress-once/${job.id}`);
-          if (!response.ok) { stopListening(); return; }
-          const update = await response.json();
-          onProgress(update);
-          if (update.state !== "running") stopListening();
-        } catch {
-          // The server went away. Say so once and stop asking, rather than
-          // knocking on a closed door every second for the rest of the day.
-          stopListening();
-          ui?.setStatus(`Lost the server at ${config.server}.`);
-        }
-      }, 900);
-      return;
-    }
-    stream = new EventSource(`${config.server}/progress/${job.id}`);
-    stream.onmessage = (event) => onProgress(JSON.parse(event.data));
-    stream.onerror = () => { stopListening(); };
+    const ask = async () => {
+      if (!job) { stopListening(); return; }
+      try {
+        const response = await api(`/progress-once/${job.id}`);
+        if (!response.ok) { stopListening(); return; }
+        const update = await response.json();
+        onProgress(update);
+        if (update.state !== "running") stopListening();
+      } catch {
+        // The server went away. Say so once and stop asking, rather than
+        // knocking on a closed door every second for the rest of the day.
+        stopListening();
+        ui?.setStatus(`Lost the server at ${config.server}.`);
+      }
+    };
+    poller = setInterval(ask, 500);
+    ask();
   }
 
-  /** Stop whichever way progress is being followed. */
   function stopListening() {
-    if (stream) { stream.close(); stream = null; }
     if (poller) { clearInterval(poller); poller = null; }
   }
 

@@ -46,7 +46,7 @@ function load(options = {}) {
     },
   };
 
-  const context = { chrome, console: { warn: (...a) => state.warnings.push(a.join(" ")), log: console.log } };
+  const context = { chrome, btoa, fetch: options.fetch, console: { warn: (...a) => state.warnings.push(a.join(" ")), log: console.log } };
   context.globalThis = context;
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8"), context);
@@ -162,4 +162,44 @@ test("an unrelated message is left alone", () => {
   const { state } = load();
   const result = state.listeners.message({ type: "something-else" }, null, () => {});
   assert.strictEqual(result, false, "should not claim the channel it does not use");
+});
+
+test("a call to the server goes out from here, with the saved address and password", async () => {
+  const calls = [];
+  const fetch = async (url, init) => {
+    calls.push({ url, init });
+    return { ok: true, status: 200, statusText: "OK", json: async () => ({ id: "j" }) };
+  };
+  const { state } = load({
+    fetch,
+    stored: { server: "http://192.168.1.5:8888", password: "hunter2" },
+  });
+
+  const answer = await new Promise((respond) => {
+    const open = state.listeners.message(
+      {
+        type: "api",
+        path: "/speak",
+        options: { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+      },
+      {},
+      respond,
+    );
+    assert.strictEqual(open, true, "the answer comes later, so the channel must stay open");
+  });
+
+  assert.strictEqual(calls[0].url, "http://192.168.1.5:8888/speak");
+  assert.strictEqual(calls[0].init.method, "POST");
+  assert.strictEqual(calls[0].init.headers["Content-Type"], "application/json");
+  assert.match(calls[0].init.headers.Authorization, /^Basic /);
+  assert.strictEqual(answer.ok, true);
+  assert.deepEqual({ ...answer.body }, { id: "j" });
+});
+
+test("a server that cannot be reached is reported, not thrown", async () => {
+  const { state } = load({ fetch: async () => { throw new Error("connection refused"); } });
+  const answer = await new Promise((respond) => {
+    state.listeners.message({ type: "api", path: "/voices", options: {} }, {}, respond);
+  });
+  assert.match(answer.failed, /connection refused/);
 });

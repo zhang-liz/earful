@@ -62,8 +62,34 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
   }
 });
 
-// Messages from the popup, which has no access to the page itself.
+/**
+ * Make a call to the server for the content script.
+ *
+ * A content script's own fetch is held to the rules of the page it sits in, and
+ * the server refuses other sites on purpose. This worker has its own permission
+ * to reach the server. The address and password come from the saved settings,
+ * never from the message.
+ */
+async function callServer({ path, options = {} }) {
+  const { server, password } = await settings();
+  const headers = { ...options.headers };
+  if (password) headers.Authorization = "Basic " + btoa(":" + password);
+  try {
+    const response = await fetch(server + path, { ...options, headers });
+    const body = await response.json().catch(() => null);
+    return { ok: response.ok, status: response.status, statusText: response.statusText, body };
+  } catch (error) {
+    return { failed: String(error) };
+  }
+}
+
+// Messages from the popup, which has no access to the page itself, and from
+// the content script, which needs the server.
 chrome.runtime.onMessage.addListener((message, _sender, respond) => {
+  if (message.type === "api") {
+    callServer(message).then(respond);
+    return true;   // respond asynchronously
+  }
   if (message.type === "popup-command") {
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
       if (tab?.id) send(tab.id, message.command);
