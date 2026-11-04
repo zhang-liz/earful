@@ -119,7 +119,34 @@ class Job:
             listener.put(update)
 
 
-JOBS: dict[str, Job] = {}
+JOBS: dict[str, Job] = {}   # oldest use first
+
+# Every reading's audio is held in memory, so only the latest few are kept.
+MAX_JOBS = 10
+JOBS_LOCK = threading.Lock()
+
+
+def _remember(job: Job) -> None:
+    """Keep a new reading, forgetting the ones not used for longest."""
+    with JOBS_LOCK:
+        JOBS[job.id] = job
+        gone = []
+        while len(JOBS) > MAX_JOBS:
+            gone.append(JOBS.pop(next(iter(JOBS))))
+    for old in gone:
+        with old.lock:
+            old.generation += 1             # stops any render still going
+            if old.state == "running":
+                old.state = "error"
+                old.error = "This reading was replaced by newer ones."
+        old.publish()
+
+
+def _touch(job_id: str) -> None:
+    """Mark a reading as in use, so it is the last to be forgotten."""
+    with JOBS_LOCK:
+        if job_id in JOBS:
+            JOBS[job_id] = JOBS.pop(job_id)
 
 
 class SpeakRequest(BaseModel):
@@ -236,7 +263,7 @@ def speak(request: SpeakRequest) -> dict:
         total=len(chunks),
         texts=chunks,
     )
-    JOBS[job.id] = job
+    _remember(job)
     threading.Thread(
         target=_render_job, args=(job, chunks, None, None, job.generation), daemon=True
     ).start()
@@ -258,6 +285,7 @@ def change_voice(job_id: str, request: RevoiceAllRequest) -> dict:
     if request.voice == job.voice:
         return {"voice": job.voice, "changed": False}
 
+    _touch(job_id)
     with job.lock:
         # A render may be in flight; bumping the generation stops it rather
         # than refusing the user's request.
@@ -295,6 +323,7 @@ def rewrite(job_id: str, request: RewriteRequest) -> dict:
     if not parts:
         raise HTTPException(status_code=400, detail="No readable text.")
 
+    _touch(job_id)
     with job.lock:
         job.generation += 1
         generation = job.generation
@@ -415,6 +444,7 @@ def chunk_audio(job_id: str, index: int, request: Request) -> Response:
         if index >= len(job.chunks):
             raise HTTPException(status_code=404, detail="Chunk not ready.")
         data = job.chunks[index]
+    _touch(job_id)
     return _range_response(data, request.headers.get("range"))
 
 
