@@ -629,6 +629,7 @@ async function saveEditor(value) {
   job.texts = result.texts;
   job.total = result.total;
   rememberJob();   // or a refresh would bring the old text back over the new audio
+  renderFailed = false;
   timings.clear();
   ready = 0; index = 0; started = false; waiting = false; pendingSeek = 0;
   player.removeAttribute("src");
@@ -768,6 +769,15 @@ function playChunk(i, at = 0) {
     index = job.total;
     $("toggle").innerHTML = "&#9654;";
     setStatus();
+    return;
+  }
+  if (i >= ready && renderFailed) {     // this part is never going to come
+    playing = false;
+    waiting = false;
+    index = i;
+    $("toggle").innerHTML = "&#9654;";
+    setStatus();
+    $("statusLine").textContent = "STOPPED";
     return;
   }
   if (i >= ready) {                     // rendering has not caught up
@@ -946,6 +956,7 @@ async function toggle() {
 
 /* ---------- follow parts as the server finishes them ---------- */
 const RETRY_MS = 3000;
+let renderFailed = false;   // the server stopped, so no more parts will come
 let retrying = null;   // the pending try to follow again after a dropped connection
 
 // Used both when a narration starts and when the voice changes, since both
@@ -986,6 +997,12 @@ function listenForParts(autoplay = true) {
       $("download").classList.remove("hidden");
     } else if (update.state === "error") {
       stream.close(); stream = null;
+      renderFailed = true;
+      if (waiting) {
+        waiting = false;
+        playing = false;
+        $("toggle").innerHTML = "&#9654;";
+      }
       fail(update.error);
       return;
     }
@@ -1037,7 +1054,8 @@ async function speak() {
   stopHighlight();
   timings.clear();
   pendingSeek = 0;
-  $("error").classList.add("hidden");
+  clearError();
+  renderFailed = false;
   $("download").classList.add("hidden");
   $("toggle").innerHTML = "&#9654;";
   $("go").disabled = true;
@@ -1139,6 +1157,7 @@ async function restoreJob() {
 
 function fail(message) {
   $("go").disabled = false;
+  if (job) setStatus();                // the parts ready may have just changed
   $("statusLine").textContent = "STOPPED";
   // Only show the paste box again when there is nothing to fall back to;
   // otherwise the reader stays and both boxes would be on screen at once.
@@ -1172,6 +1191,13 @@ async function sample() {
 }
 
 /* ---------- wiring ---------- */
+// The voice did not change and the audio is still there, so say why and let
+// Play carry on with what the reader had.
+function keepVoice(message) {
+  if (job.voice) voice.value = job.voice;
+  fail(message);
+}
+
 // Picking a voice re-reads the article in it. Without a job yet, the choice
 // simply applies to the next one.
 voice.addEventListener("change", async () => {
@@ -1191,6 +1217,7 @@ voice.addEventListener("change", async () => {
   $("toggle").innerHTML = "&#9654;";
   stopHighlight();
   timings.clear();
+  clearError();
   $("statusLine").textContent = "CHANGING VOICE...";
 
   let response;
@@ -1201,15 +1228,16 @@ voice.addEventListener("change", async () => {
       body: JSON.stringify({ voice: chosen })
     });
   } catch (error) {
-    fail(`Could not reach the server: ${error}`);
+    keepVoice(`Could not reach the server: ${error}`);
     return;
   }
   if (!response.ok) {
     const detail = await response.json().catch(() => ({ detail: response.statusText }));
-    fail(detail.detail || "Could not change the voice.");
+    keepVoice(detail.detail || "Could not change the voice.");
     return;
   }
   const result = await response.json();
+  renderFailed = false;
   job.voice = chosen;
   rememberJob();
   if (!result.changed) { setStatus(); return; }
