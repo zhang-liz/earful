@@ -407,6 +407,7 @@ window.player = player;            // handy from the console
 let job = null;        // { id, total, texts }
 let ready = 0;         // parts the server has finished
 let index = 0;         // part being played now
+let resumeAt = 0;      // seconds into that part to start from, after a refresh
 let playing = false;
 let stream = null;
 let waiting = false;   // playback caught up to rendering
@@ -438,8 +439,10 @@ async function loadVoices() {
 }
 
 /* ---------- speed ---------- */
+const SAVED_SPEED = "readItToMe.speed";
 function applySpeed() {
   const rate = Number(speed.value);
+  try { localStorage.setItem(SAVED_SPEED, speed.value); } catch { /* fine */ }
   player.playbackRate = rate;
   $("speedLabel").textContent = `${rate.toFixed(2)}x`;
   // Light the preset only when it matches exactly.
@@ -789,6 +792,7 @@ function playChunk(i, at = 0) {
   }
   waiting = false;
   index = i;
+  resumeAt = 0;
   const src = `/chunk/${job.id}/${i}.wav`;
   // Assigning the same src is a no-op in browsers, so a part that failed to
   // load (autoplay blocked after a save) would never retry. Force the load.
@@ -957,7 +961,7 @@ async function toggle() {
   } else {
     started = true;
     if (index >= job.total) index = 0; // finished: start again from the top
-    playChunk(index);
+    playChunk(index, resumeAt);
   }
 }
 
@@ -997,7 +1001,7 @@ function listenForParts(autoplay = true) {
         setStatus();
       });
     } else if (waiting && ready > index) {  // we ran dry, now we can resume
-      playChunk(index);
+      playChunk(index, resumeAt);
     }
 
     if (update.state === "ready") {
@@ -1154,11 +1158,19 @@ async function restoreJob() {
   }
 
   setStatus();
-  // This page has just come back at the start. A spot the phone already has
-  // for this reading is further along, so only offer one if there is none.
+  // Go back to the last spot in this reading, from this page or the phone.
+  // Nothing plays until Play is pressed. With no spot yet, offer this one.
   try {
     const spot = await (await fetch("/handoff", { cache: "no-store" })).json();
-    if (spot.job !== job.id) handOff(true);
+    if (spot.job === job.id) {
+      index = Math.min(spot.index, job.total - 1);
+      resumeAt = spot.at || 0;
+      setStatus();
+      const part = $("reader").children[index];
+      if (part) part.scrollIntoView({ block: "nearest" });
+    } else {
+      handOff(true);
+    }
   } catch { /* handing over is optional */ }
   listenForParts(false);
 }
@@ -1342,7 +1354,9 @@ window.addEventListener("resize", measureDock);
 window.addEventListener("orientationchange", measureDock);
 
 loadVoices();
-setSpeed(1);
+let savedSpeed = null;
+try { savedSpeed = localStorage.getItem(SAVED_SPEED); } catch { /* default */ }
+setSpeed(savedSpeed || 1);
 refreshCount();
 measureDock();
 
