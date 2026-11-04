@@ -329,6 +329,16 @@ def change_voice(job_id: str, request: RevoiceAllRequest) -> dict:
     if request.voice == job.voice:
         return {"voice": job.voice, "changed": False}
 
+    # Most voices download on first use. Find out now if that fails, while the
+    # audio for the current voice is still here to go back to.
+    try:
+        list(engine.stream("Hello.", voice=request.voice, speed=job.speed))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Could not load that voice. It may need the internet the first time.",
+        ) from exc
+
     _touch(job_id)
     with job.lock:
         # A render may be in flight; bumping the generation stops it rather

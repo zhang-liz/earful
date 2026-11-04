@@ -29,6 +29,7 @@ async function open(options = {}) {
     requests: [],
     plays: [],
     voiceAnswer: { changed: true, voice: "af_bella", total: 1 },
+    voiceStatus: 200,
     progress: null,
     answers: options.answers || {},   // url -> what a GET of it answers
   };
@@ -63,7 +64,7 @@ async function open(options = {}) {
     if (url.startsWith("/progress-once/")) {
       return reply(state.progress || { state: "ready", done: 1, total: 1, texts: ["Saved."] });
     }
-    if (url.startsWith("/voice/")) return reply(state.voiceAnswer);
+    if (url.startsWith("/voice/")) return reply(state.voiceAnswer, state.voiceStatus);
     if (url.startsWith("/words/")) return reply({ words: [] });
     if (url === "/handoff") return reply({});
     return reply({ detail: "not found" }, 404);
