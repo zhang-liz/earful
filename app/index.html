@@ -128,6 +128,7 @@
   .fine span { font-size: 8px; color: var(--amber); white-space: nowrap; }
 
   .transport { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 7px; }
+  #loop.on { background: var(--amber); color: var(--shadow); }
 
   /* Blocky progress meter, drawn as discrete cells. */
   .meter {
@@ -351,6 +352,8 @@
         <button id="toggle" title="Play or pause">&#9654;</button>
         <button id="next" title="Next part">&#9197;</button>
       </div>
+      <div style="height:7px"></div>
+      <button id="loop" class="on" aria-pressed="true" title="Start again from the top when the reading ends" style="width:100%">LOOP: ON</button>
       <div class="meter" id="meter" aria-hidden="true"></div>
       <p class="stat">
         <b id="statusLine">IDLE</b><br />
@@ -839,8 +842,32 @@ player.addEventListener("loadedmetadata", () => {
 
 player.addEventListener("ended", () => {
   stopHighlight();
-  if (playing) playChunk(index + 1);
+  if (!playing) return;
+  // With loop on, the end of the last part leads straight back to the first.
+  const next = index + 1 >= job.total && loop ? 0 : index + 1;
+  playChunk(next);
 });
+
+/* ---------- loop ---------- */
+// On by default: a reading that ends goes round again until paused. The
+// choice is kept in this browser so it survives a refresh.
+const SAVED_LOOP = "readItToMe.loop";
+let loop = true;
+try { loop = localStorage.getItem(SAVED_LOOP) !== "off"; } catch { /* default on */ }
+
+function paintLoop() {
+  const button = $("loop");
+  button.classList.toggle("on", loop);
+  button.setAttribute("aria-pressed", String(loop));
+  button.textContent = loop ? "LOOP: ON" : "LOOP: OFF";
+}
+
+function toggleLoop() {
+  loop = !loop;
+  try { localStorage.setItem(SAVED_LOOP, loop ? "on" : "off"); } catch { /* fine */ }
+  paintLoop();
+}
+paintLoop();
 
 /**
  * Tell the server where this reading has got to, so a phone can take over.
@@ -1164,6 +1191,7 @@ for (const button of $("presets").children) {
 $("go").addEventListener("click", () => { if (!editing) speak(); });
 $("sample").addEventListener("click", sample);
 $("toggle").addEventListener("click", toggle);
+$("loop").addEventListener("click", toggleLoop);
 $("prev").addEventListener("click", () => !editing && jumpTo(index - 1));
 $("next").addEventListener("click", () => !editing && jumpTo(index + 1));
 $("download").addEventListener("click", () => {
