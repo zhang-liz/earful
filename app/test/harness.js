@@ -18,7 +18,8 @@ const tick = (ms = 5) => new Promise((resolve) => setTimeout(resolve, ms));
  * @param {object} options
  * @param {Function} [options.fetch]  replaces the fake server's answers
  * @param {object}   [options.saved]  localStorage to start with
- * @param {number}   [options.done]   parts rendered for a restored reading
+ * @param {object}   [options.answers]  what a GET of a url answers, by url
+ * @param {object}   [options.progress]  what /progress-once answers
  */
 async function open(options = {}) {
   const state = {
@@ -28,6 +29,7 @@ async function open(options = {}) {
     plays: [],
     voiceAnswer: { changed: true, voice: "af_bella", total: 1 },
     progress: null,
+    answers: options.answers || {},   // url -> what a GET of it answers
   };
 
   const reply = (body, status = 200) => ({
@@ -40,6 +42,7 @@ async function open(options = {}) {
   const server = async (url, init = {}) => {
     state.requests.push({ url, init });
     const body = init.body ? JSON.parse(init.body) : null;
+    if (url in state.answers && (init.method || "GET") === "GET") return reply(state.answers[url]);
     if (url === "/voices") {
       return reply({
         default: "af_heart",
