@@ -108,9 +108,14 @@ async function open(options = {}) {
       class FakeEventSource {
         constructor(url) { this.url = url; state.stream = this; }
         close() { this.closed = true; }
+        /** The connection dropped. */
+        fail() { this.onerror(); }
         /** The server reports progress. */
         send(update) { this.onmessage({ data: JSON.stringify(update) }); }
       }
+      // Waits are cut short, so a test is not left sitting through a retry.
+      const realTimeout = window.setTimeout.bind(window);
+      window.setTimeout = (fn, ms, ...rest) => realTimeout(fn, Math.min(ms, 5), ...rest);
       window.Audio = FakeAudio;
       window.EventSource = FakeEventSource;
       window.fetch = options.fetch || server;

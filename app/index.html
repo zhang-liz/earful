@@ -945,6 +945,9 @@ async function toggle() {
 }
 
 /* ---------- follow parts as the server finishes them ---------- */
+const RETRY_MS = 3000;
+let retrying = null;   // the pending try to follow again after a dropped connection
+
 // Used both when a narration starts and when the voice changes, since both
 // produce parts one at a time.
 /**
@@ -954,6 +957,7 @@ async function toggle() {
  *   must not start talking on its own.
  */
 function listenForParts(autoplay = true) {
+  clearTimeout(retrying);
   if (stream) { stream.close(); stream = null; }
   stream = new EventSource(`/progress/${job.id}`);
   stream.onmessage = (event) => {
@@ -987,7 +991,38 @@ function listenForParts(autoplay = true) {
     }
     setStatus();
   };
-  stream.onerror = () => { if (stream) { stream.close(); stream = null; } };
+  stream.onerror = () => {
+    if (stream) { stream.close(); stream = null; }
+    if (job) followAgain(job.id, autoplay);
+  };
+}
+
+/**
+ * Follow the parts again after the connection drops.
+ *
+ * A Mac that sleeps or a Wi-Fi blip drops the stream, and without this the page
+ * never hears of another part. The server is asked first because a stream cannot
+ * say why it failed, and a reading it has forgotten will never come back.
+ */
+function followAgain(id, autoplay) {
+  clearTimeout(retrying);
+  retrying = setTimeout(async () => {
+    if (!job || job.id !== id) return;
+    let response = null;
+    try {
+      response = await fetch(`/progress-once/${id}`, { cache: "no-store" });
+    } catch { /* still down: asked again below */ }
+    if (!job || job.id !== id || stream) return;
+
+    if (response && response.status === 404) {
+      fail("The server no longer has this reading. Start it again to hear the rest.");
+    } else if (response && response.ok) {
+      listenForParts(autoplay);
+    } else {
+      if (waiting) $("statusLine").textContent = "LOST THE SERVER - TRYING AGAIN...";
+      followAgain(id, autoplay);
+    }
+  }, RETRY_MS);
 }
 
 /* ---------- start a narration ---------- */
