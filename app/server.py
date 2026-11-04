@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import io
+import ipaddress
 import json
 import os
 import queue
@@ -13,6 +14,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import numpy as np
 import soundfile as sf
@@ -75,6 +77,48 @@ async def require_password(request: Request, call_next):
         content="Password required.",
         headers={"WWW-Authenticate": 'Basic realm="Earful"'},
     )
+
+
+# Extra names this server answers to, comma separated, for anyone reaching it
+# by a name of their own.
+ALLOWED_HOSTS = {
+    name.strip().lower()
+    for name in os.environ.get("TTS_ALLOWED_HOSTS", "").split(",")
+    if name.strip()
+}
+
+# Endings that only ever name something on a private network.
+PRIVATE_ENDINGS = (".local", ".localhost", ".lan", ".home", ".internal", ".ts.net")
+
+
+def _host_allowed(host: str) -> bool:
+    """Whether a Host header names this machine, not a site on the internet."""
+    try:
+        name = (urlsplit(f"//{host}").hostname or "").lower()
+    except ValueError:
+        return False
+    if name in ALLOWED_HOSTS or "." not in name or name.endswith(PRIVATE_ENDINGS):
+        return True
+    try:
+        ipaddress.ip_address(name)
+        return True
+    except ValueError:
+        return False
+
+
+@app.middleware("http")
+async def refuse_other_names(request: Request, call_next):
+    """Stop DNS rebinding: a website pointing its own name at this machine.
+
+    The browser then treats that website and this server as one site, which gets
+    past the rule against other sites. Only the Host header gives it away.
+    """
+    if not _host_allowed(request.headers.get("host", "")):
+        return Response(
+            status_code=403,
+            content="This server does not answer to that name. See TTS_ALLOWED_HOSTS.",
+        )
+    return await call_next(request)
 
 
 @dataclass
