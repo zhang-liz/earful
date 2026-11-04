@@ -433,7 +433,8 @@ async function loadVoices() {
     voice.append(option);
   }
   defaultVoice = data.default;
-  voice.value = data.default;
+  // A reading put back after a refresh may have got here first.
+  voice.value = (job && job.voice) || data.default;
 }
 
 /* ---------- speed ---------- */
@@ -521,6 +522,7 @@ function openEditor(caretPart = 0) {
 
   player.pause();
   playing = false;
+  waiting = false;     // or the part being waited for starts under the editor
   $("toggle").innerHTML = "&#9654;";
   stopHighlight();
   editing = true;
@@ -919,6 +921,7 @@ async function toggle() {
   if (playing) {
     player.pause();
     playing = false;
+    waiting = false;                   // or the part starts when it arrives
     if (raf) { cancelAnimationFrame(raf); raf = null; }
     $("toggle").innerHTML = "&#9654;";
     setStatus();
@@ -936,6 +939,7 @@ async function toggle() {
     setStatus();
   } else {
     started = true;
+    if (index >= job.total) index = 0; // finished: start again from the top
     playChunk(index);
   }
 }
@@ -1004,11 +1008,17 @@ async function speak() {
   $("go").disabled = true;
   $("statusLine").textContent = "GETTING READY...";
 
-  const response = await fetch("/speak", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: text.value, voice: voice.value || defaultVoice })
-  });
+  let response;
+  try {
+    response = await fetch("/speak", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: text.value, voice: voice.value || defaultVoice })
+    });
+  } catch (error) {
+    fail(`Could not reach the server: ${error}`);
+    return;
+  }
   $("go").disabled = false;
 
   if (!response.ok) {
@@ -1077,6 +1087,10 @@ async function restoreJob() {
   // claim to be still working while it waits for the first progress tick.
   ready = progress.done;
   if (progress.state === "ready") $("download").classList.remove("hidden");
+  if (progress.voice) {
+    job.voice = progress.voice;
+    voice.value = job.voice;           // loadVoices sets it, if it comes later
+  }
 
   setStatus();
   // This page has just come back at the start. A spot the phone already has
@@ -1103,12 +1117,18 @@ function fail(message) {
 async function sample() {
   $("sample").disabled = true;
   const line = "This is how I sound. I can read your whole article in this voice.";
-  const response = await fetch("/preview", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: line, voice: voice.value || defaultVoice })
-  });
-  $("sample").disabled = false;
+  let response;
+  try {
+    response = await fetch("/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: line, voice: voice.value || defaultVoice })
+    });
+  } catch {
+    return;                            // a sample is not worth an error message
+  } finally {
+    $("sample").disabled = false;
+  }
   if (!response.ok) return;
   const audio = new Audio(URL.createObjectURL(await response.blob()));
   audio.preservesPitch = true;
@@ -1129,28 +1149,38 @@ voice.addEventListener("change", async () => {
     if (editing) return;               // the save failed; keep the editor
   }
   const chosen = voice.value;
+  if (chosen === job.voice) return;    // already reading in this voice
   player.pause();
   playing = false;
+  waiting = false;
   $("toggle").innerHTML = "&#9654;";
   stopHighlight();
   timings.clear();
   $("statusLine").textContent = "CHANGING VOICE...";
-  $("download").classList.add("hidden");
 
-  const response = await fetch(`/voice/${job.id}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ voice: chosen })
-  });
+  let response;
+  try {
+    response = await fetch(`/voice/${job.id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ voice: chosen })
+    });
+  } catch (error) {
+    fail(`Could not reach the server: ${error}`);
+    return;
+  }
   if (!response.ok) {
     const detail = await response.json().catch(() => ({ detail: response.statusText }));
     fail(detail.detail || "Could not change the voice.");
     return;
   }
   const result = await response.json();
+  job.voice = chosen;
+  rememberJob();
   if (!result.changed) { setStatus(); return; }
 
   // Start over: the old audio is gone and the new parts arrive one by one.
+  $("download").classList.add("hidden");
   ready = 0; index = 0; started = false; waiting = false; pendingSeek = 0;
   player.removeAttribute("src");
   player.load();
@@ -1205,8 +1235,10 @@ $("download").addEventListener("click", () => {
 $("edit").addEventListener("click", () => openEditor(index));
 
 document.addEventListener("keydown", (event) => {
-  // Never steal keys from a text box, including an open paragraph editor.
-  if (event.target === text || event.target.closest(".edit-box") || !job) return;
+  // Keys in a text box, slider or menu belong to it, and Cmd+Left and the like
+  // belong to the browser. Nothing moves while the editor is open.
+  if (!job || editing || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (event.target.closest("input, select, textarea")) return;
   if (event.code === "Space") { event.preventDefault(); toggle(); }
   if (event.code === "ArrowRight") { event.preventDefault(); jumpTo(index + 1); }
   if (event.code === "ArrowLeft") { event.preventDefault(); jumpTo(Math.max(index - 1, 0)); }

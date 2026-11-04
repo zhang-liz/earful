@@ -182,3 +182,60 @@ test("clicking a word plays from that word", async () => {
   await settle();
   assert.ok(h.state.audio.src, "audio should be loaded");
 });
+
+/** A reading whose server finishes more parts when the test says so. */
+async function slowReading() {
+  const progress = { ready: 1 };
+  const base = server();
+  const fetch = async (url, options) => {
+    if (url.includes("/progress-once/")) {
+      return { ok: true, status: 200, json: async () => ({
+        id: "job1", state: "running", done: progress.ready, total: TEXTS.length, error: "",
+      }) };
+    }
+    return base.fetch(url, options);
+  };
+  const h = load(PAGE, { fetch });
+  await h.send({ type: "read-page", settings: {} });
+  await settle();
+  return { h, progress };
+}
+
+test("pausing while waiting for a part stays paused when it arrives", async () => {
+  const { h, progress } = await slowReading();
+  h.button("next").click();
+  assert.match(h.status(), /Buffering/);
+  await h.send({ type: "toggle", settings: {} });
+
+  progress.ready = 2;
+  await settle(100);
+  assert.match(h.state.audio.src, /\/0\.wav$/, "the next part should not start on its own");
+  assert.match(h.status(), /Paused/);
+});
+
+test("play after pausing while waiting carries on with the part it was waiting for", async () => {
+  const { h, progress } = await slowReading();
+  h.state.audio.time = 3;                // part of the way through the first part
+  h.button("next").click();
+  await h.send({ type: "toggle", settings: {} });
+  progress.ready = 2;
+  await settle(100);
+
+  await h.send({ type: "toggle", settings: {} });
+  await settle();
+  assert.match(h.state.audio.src, /\/1\.wav$/);
+});
+
+test("play after the last part has finished starts again from the top", async () => {
+  const { h } = await reading();
+  for (let i = 0; i < TEXTS.length; i++) {
+    h.state.audio.dispatchEvent({ type: "ended" });
+    await settle(10);
+  }
+  assert.match(h.status(), /Finished/);
+
+  await h.send({ type: "toggle", settings: {} });
+  await settle();
+  assert.match(h.state.audio.src, /\/0\.wav$/);
+  assert.strictEqual(h.state.audio.paused, false);
+});

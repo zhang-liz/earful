@@ -101,6 +101,7 @@ class Job:
     def snapshot(self) -> dict:
         return {
             "id": self.id,
+            "voice": self.voice,
             "state": self.state,
             "done": len(self.chunks),
             "total": self.total,
