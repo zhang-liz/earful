@@ -239,3 +239,11 @@ test("play after the last part has finished starts again from the top", async ()
   assert.match(h.state.audio.src, /\/0\.wav$/);
   assert.strictEqual(h.state.audio.paused, false);
 });
+
+test("skipping fast does not ask for a click", async () => {
+  const { h } = await reading();
+  h.state.audio.play = () => Promise.reject(Object.assign(new Error("Interrupted."), { name: "AbortError" }));
+  h.button("next").click();
+  await settle();
+  assert.doesNotMatch(h.status(), /Click here to start/);
+});
