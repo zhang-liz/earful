@@ -1,6 +1,6 @@
 {
   "name": "read-it-to-me",
-  "displayName": "Read It To Me",
+  "displayName": "Earful",
   "description": "Read the text in your editor aloud in a natural voice, highlighting each word.",
   "version": "1.0.0",
   "publisher": "local",
@@ -19,49 +19,49 @@
       {
         "command": "readItToMe.readSelection",
         "title": "Read Selection",
-        "category": "Read It To Me",
+        "category": "Earful",
         "icon": "$(play)"
       },
       {
         "command": "readItToMe.readFile",
         "title": "Read Whole File",
-        "category": "Read It To Me",
+        "category": "Earful",
         "icon": "$(play)"
       },
       {
         "command": "readItToMe.toggle",
         "title": "Play or Pause",
-        "category": "Read It To Me",
+        "category": "Earful",
         "icon": "$(debug-pause)"
       },
       {
         "command": "readItToMe.stop",
         "title": "Stop",
-        "category": "Read It To Me",
+        "category": "Earful",
         "icon": "$(debug-stop)"
       },
       {
         "command": "readItToMe.previous",
         "title": "Back One Part",
-        "category": "Read It To Me",
+        "category": "Earful",
         "icon": "$(chevron-left)"
       },
       {
         "command": "readItToMe.next",
         "title": "Forward One Part",
-        "category": "Read It To Me",
+        "category": "Earful",
         "icon": "$(chevron-right)"
       },
       {
         "command": "readItToMe.jumpHere",
         "title": "Read From Here",
-        "category": "Read It To Me",
+        "category": "Earful",
         "icon": "$(target)"
       },
       {
         "command": "readItToMe.speed",
         "title": "Change Speed",
-        "category": "Read It To Me",
+        "category": "Earful",
         "icon": "$(dashboard)"
       }
     ],
@@ -163,12 +163,12 @@
       ]
     },
     "configuration": {
-      "title": "Read It To Me",
+      "title": "Earful",
       "properties": {
         "readItToMe.server": {
           "type": "string",
           "default": "http://127.0.0.1:8888",
-          "description": "Address of the Read It To Me server."
+          "description": "Address of the Earful server."
         },
         "readItToMe.password": {
           "type": "string",

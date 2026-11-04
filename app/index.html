@@ -3,11 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>READ IT TO ME</title>
+<title>EARFUL</title>
 <!-- Saved to an iPhone Home Screen, this opens without Safari's chrome. -->
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Read It To Me" />
+<meta name="apple-mobile-web-app-title" content="Earful" />
+<link rel="icon" href="/icon.png" />
+<link rel="apple-touch-icon" href="/icon.png" />
 <meta name="theme-color" content="#14121c" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -126,6 +128,7 @@
   .fine span { font-size: 8px; color: var(--amber); white-space: nowrap; }
 
   .transport { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 7px; }
+  #loop.on { background: var(--amber); color: var(--shadow); }
 
   /* Blocky progress meter, drawn as discrete cells. */
   .meter {
@@ -137,6 +140,11 @@
     padding: 2px;
     margin: 10px 0 8px;
   }
+  /* The gaps cannot shrink, so a long article with one cell per part would
+     push the player wider than the sidebar and over the text. Drop the gaps
+     once there are many cells, and never let the meter widen its panel. */
+  .meter { min-width: 0; overflow: hidden; }
+  .meter.dense { gap: 0; }
   .meter i { flex: 1; background: var(--shadow); }
   .meter i.lit { background: var(--green); }
   .stat { font-size: 8px; color: var(--muted); line-height: 1.9; }
@@ -313,7 +321,7 @@
   <!-- ================= sidebar: every control ================= -->
   <aside class="side">
     <div class="box">
-      <h1>READ IT<br />TO ME</h1>
+      <h1>EARFUL</h1>
       <p class="tagline">PASTE TEXT.<br />PRESS PLAY.</p>
     </div>
 
@@ -344,6 +352,8 @@
         <button id="toggle" title="Play or pause">&#9654;</button>
         <button id="next" title="Next part">&#9197;</button>
       </div>
+      <div style="height:7px"></div>
+      <button id="loop" class="on" aria-pressed="true" title="Start again from the top when the reading ends" style="width:100%">LOOP: ON</button>
       <div class="meter" id="meter" aria-hidden="true"></div>
       <p class="stat">
         <b id="statusLine">IDLE</b><br />
@@ -616,6 +626,7 @@ async function saveEditor(value) {
   const result = await response.json();
   job.texts = result.texts;
   job.total = result.total;
+  rememberJob();   // or a refresh would bring the old text back over the new audio
   timings.clear();
   ready = 0; index = 0; started = false; waiting = false; pendingSeek = 0;
   player.removeAttribute("src");
@@ -718,6 +729,7 @@ function drawMeter() {
   if (meter.children.length !== job.total) {
     meter.textContent = "";
     for (let i = 0; i < job.total; i++) meter.append(document.createElement("i"));
+    meter.classList.toggle("dense", job.total > 40);
   }
   [...meter.children].forEach((cell, i) => cell.classList.toggle("lit", i < ready));
 }
@@ -830,8 +842,32 @@ player.addEventListener("loadedmetadata", () => {
 
 player.addEventListener("ended", () => {
   stopHighlight();
-  if (playing) playChunk(index + 1);
+  if (!playing) return;
+  // With loop on, the end of the last part leads straight back to the first.
+  const next = index + 1 >= job.total && loop ? 0 : index + 1;
+  playChunk(next);
 });
+
+/* ---------- loop ---------- */
+// On by default: a reading that ends goes round again until paused. The
+// choice is kept in this browser so it survives a refresh.
+const SAVED_LOOP = "readItToMe.loop";
+let loop = true;
+try { loop = localStorage.getItem(SAVED_LOOP) !== "off"; } catch { /* default on */ }
+
+function paintLoop() {
+  const button = $("loop");
+  button.classList.toggle("on", loop);
+  button.setAttribute("aria-pressed", String(loop));
+  button.textContent = loop ? "LOOP: ON" : "LOOP: OFF";
+}
+
+function toggleLoop() {
+  loop = !loop;
+  try { localStorage.setItem(SAVED_LOOP, loop ? "on" : "off"); } catch { /* fine */ }
+  paintLoop();
+}
+paintLoop();
 
 /**
  * Tell the server where this reading has got to, so a phone can take over.
@@ -1018,23 +1054,29 @@ async function restoreJob() {
   } catch { return; }
   if (!saved || !saved.id) return;
 
+  let progress;
   try {
-    const response = await fetch(`/progress-once/${saved.id}`);
+    const response = await fetch(`/progress-once/${saved.id}`, { cache: "no-store" });
     if (!response.ok) { localStorage.removeItem(SAVED_JOB); return; }
+    progress = await response.json();
   } catch { return; }
 
+  // The server's text is the truth: an edit made here, or from another tab,
+  // may have changed the parts since this copy was saved.
   job = saved;
+  if (Array.isArray(progress.texts)) {
+    job.texts = progress.texts;
+    job.total = progress.total;
+    rememberJob();
+  }
   $("inputBox").classList.add("hidden");
   $("readerBox").classList.remove("hidden");
   drawReader();
 
   // Show what the server has already rendered, so a finished reading does not
   // claim to be still working while it waits for the first progress tick.
-  try {
-    const progress = await (await fetch(`/progress-once/${job.id}`)).json();
-    ready = progress.done;
-    if (progress.state === "ready") $("download").classList.remove("hidden");
-  } catch { /* the stream below will fill this in */ }
+  ready = progress.done;
+  if (progress.state === "ready") $("download").classList.remove("hidden");
 
   setStatus();
   handOff(true);
@@ -1149,6 +1191,7 @@ for (const button of $("presets").children) {
 $("go").addEventListener("click", () => { if (!editing) speak(); });
 $("sample").addEventListener("click", sample);
 $("toggle").addEventListener("click", toggle);
+$("loop").addEventListener("click", toggleLoop);
 $("prev").addEventListener("click", () => !editing && jumpTo(index - 1));
 $("next").addEventListener("click", () => !editing && jumpTo(index + 1));
 $("download").addEventListener("click", () => {

@@ -76,7 +76,7 @@ async def require_password(request: Request, call_next):
     return Response(
         status_code=401,
         content="Password required.",
-        headers={"WWW-Authenticate": 'Basic realm="Read It To Me"'},
+        headers={"WWW-Authenticate": 'Basic realm="Earful"'},
     )
 
 
@@ -231,6 +231,12 @@ def index() -> str:
     return (ROOT / "app" / "index.html").read_text()
 
 
+@app.get("/icon.png")
+def icon() -> FileResponse:
+    """The Earful logo, for the browser tab and a phone's Home Screen."""
+    return FileResponse(ROOT / "app" / "icon.png", media_type="image/png")
+
+
 @app.get("/voices")
 def voices() -> dict:
     return {
@@ -366,7 +372,9 @@ def progress_once(job_id: str) -> dict:
     job = JOBS.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job.")
-    return job.snapshot()
+    # The parts are included so a page coming back after a refresh shows the
+    # text as it is now, not as it was when the page last saved it.
+    return {**job.snapshot(), "texts": job.texts}
 
 
 @app.get("/progress/{job_id}")
@@ -589,6 +597,11 @@ def _tailscale() -> dict:
     try:
         status = json.loads(raw)
     except json.JSONDecodeError:
+        return {"name": "", "proxied": False}
+
+    # Tailscale answers even while switched off, naming a machine nobody can
+    # reach. Only a running backend is an address worth offering.
+    if status.get("BackendState") != "Running":
         return {"name": "", "proxied": False}
 
     self_node = status.get("Self") or {}

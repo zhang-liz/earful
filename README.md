@@ -1,4 +1,4 @@
-# Read It To Me
+# Earful
 
 Paste text. Get it read aloud in a natural human voice. Everything runs on your
 own Mac — no accounts, no API keys, no internet after the first run.
@@ -15,6 +15,20 @@ The first run downloads the voice model (~350 MB). After that it starts in a
 few seconds. Press `Ctrl+C` in the terminal to stop.
 
 To use a different port: `PORT=9000 ./run.sh`
+
+### Or as a Mac app: Earful
+
+```sh
+./mac/build-app.sh
+```
+
+This puts **Earful** in `/Applications`. Open it like any app, or keep it in
+the Dock. It starts the server and opens the page. Click the Dock icon again to
+reopen the page. Quit Earful to stop the server and free its memory.
+
+It serves this Mac only. With Tailscale signed in, the phone address still
+works. Server output goes to `~/Library/Logs/Earful.log`. Run the build again
+if you move this folder.
 
 ## Use it from your phone
 

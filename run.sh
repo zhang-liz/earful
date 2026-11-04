@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the Read It To Me server, then open it in your browser.
+# Start the Earful server, then open it in your browser.
 #
 #   ./run.sh              this Mac only
 #   ./run.sh --lan        also reachable from your phone on the same Wi-Fi
@@ -44,5 +44,6 @@ if command -v tailscale >/dev/null 2>&1; then
   fi
 fi
 
-( sleep 3; open "http://127.0.0.1:${PORT}" ) &
+# The Mac app opens the page itself once the server answers.
+[[ -z "${NO_OPEN:-}" ]] && ( sleep 3; open "http://127.0.0.1:${PORT}" ) &
 exec uv run uvicorn app.server:app --host "$HOST" --port "$PORT"
