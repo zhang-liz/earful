@@ -36,6 +36,10 @@ app = FastAPI(title="TTS Reader")
 # Silence inserted between parts, in seconds.
 GAP_SECONDS = 0.25
 
+# What a part with nothing to say, like "---", plays. Not an empty file, which
+# some browsers refuse to play, and which would stop the reading there.
+QUIET_SECONDS = 0.1
+
 # Set TTS_PASSWORD to require a password. Left unset (the local-only default),
 # every request is allowed through.
 PASSWORD = os.environ.get("TTS_PASSWORD", "").strip()
@@ -129,57 +133,24 @@ def _to_wav(audio: np.ndarray) -> bytes:
     return buffer.getvalue()
 
 
-def _run_job(job: Job, text: str, generation: int = 0) -> None:
-    try:
-        for segment in engine.stream(text, voice=job.voice, speed=job.speed):
-            if job.generation != generation:
-                return          # superseded by a newer edit or voice change
-            if not segment.words:
-                # The pause between chunks. It is not a part of its own, and
-                # dropping it would run the paragraphs together, so it is left
-                # for the browser to supply as a gap between parts.
-                continue
-            with job.lock:
-                if job.generation != generation:
-                    return
-                job.chunks.append(_to_wav(segment.audio))
-                job.words.append(
-                    [
-                        {"t": w.text, "s": round(w.start, 3), "e": round(w.end, 3)}
-                        for w in segment.words
-                    ]
-                )
-                job.seconds += len(segment.audio) / SAMPLE_RATE
-            job.publish()
-        if job.generation == generation:
-            job.state = "ready"
-    except Exception as exc:  # surfaced to the browser, not swallowed
-        if job.generation == generation:
-            job.state = "error"
-            job.error = f"{type(exc).__name__}: {exc}"
-    finally:
-        job.publish()
-
-
 def _render_one(job: Job, body: str) -> tuple[np.ndarray, list[dict]]:
     """Speak one part's text, returning its audio and word timings."""
     audio_parts: list[np.ndarray] = []
     words: list[dict] = []
     offset = 0.0
     for segment in engine.stream(body, voice=job.voice, speed=job.speed):
-        if not segment.words:
-            continue
         audio_parts.append(segment.audio)
         words.extend(
             {"t": w.text, "s": round(w.start + offset, 3), "e": round(w.end + offset, 3)}
             for w in segment.words
         )
         offset += len(segment.audio) / SAMPLE_RATE
-    audio = np.concatenate(audio_parts) if audio_parts else np.zeros(0, dtype=np.float32)
-    return audio, words
+    if not audio_parts:
+        return np.zeros(int(SAMPLE_RATE * QUIET_SECONDS), dtype=np.float32), []
+    return np.concatenate(audio_parts), words
 
 
-def _rerun_job(
+def _render_job(
     job: Job,
     texts: list[str],
     kept: list[bytes | None] | None = None,
@@ -188,8 +159,8 @@ def _rerun_job(
 ) -> None:
     """Speak a known list of parts, reusing any audio passed in `kept`.
 
-    Not _run_job: that re-chunks the text it is given, and a part edited past
-    the chunk limit would split, changing how many parts there are.
+    Part by part, so that every part ends up with exactly one file, even one
+    with no sound. A missing file would give all later parts the wrong audio.
     """
     try:
         for i, body in enumerate(texts):
@@ -266,7 +237,7 @@ def speak(request: SpeakRequest) -> dict:
     )
     JOBS[job.id] = job
     threading.Thread(
-        target=_run_job, args=(job, request.text, job.generation), daemon=True
+        target=_render_job, args=(job, chunks, None, None, job.generation), daemon=True
     ).start()
     return {**job.snapshot(), "texts": job.texts}
 
@@ -303,7 +274,7 @@ def change_voice(job_id: str, request: RevoiceAllRequest) -> dict:
 
     (OUTPUT_DIR / f"{job_id}.wav").unlink(missing_ok=True)
     threading.Thread(
-        target=_rerun_job, args=(job, texts, None, None, generation), daemon=True
+        target=_render_job, args=(job, texts, None, None, generation), daemon=True
     ).start()
     return {"voice": job.voice, "changed": True, "total": job.total}
 
@@ -349,7 +320,7 @@ def rewrite(job_id: str, request: RewriteRequest) -> dict:
 
     (OUTPUT_DIR / f"{job_id}.wav").unlink(missing_ok=True)
     threading.Thread(
-        target=_rerun_job, args=(job, parts, kept, kept_words, generation), daemon=True
+        target=_render_job, args=(job, parts, kept, kept_words, generation), daemon=True
     ).start()
     reused = sum(1 for c in kept if c is not None)
     return {"total": len(parts), "texts": parts, "reused": reused}
