@@ -532,7 +532,7 @@ def _listening_beyond_this_machine(port: int) -> bool:
         probe.close()
 
 
-def _tailscale() -> dict:
+def _tailscale(port: int) -> dict:
     """What Tailscale offers for reaching this machine.
 
     Returns the shortest name that works, and whether a proxy is set up that
@@ -584,14 +584,19 @@ def _tailscale() -> dict:
         addresses = self_node.get("TailscaleIPs") or []
         name = next((a for a in addresses if ":" not in a), "")
 
-    # A proxy on port 80 means the address needs no port at all. Asked of the
-    # serve config rather than guessed from its printed layout.
+    # A proxy on port 80 to this server means the address needs no port at all.
+    # Asked of the serve config rather than guessed from its printed layout.
     served = run("tailscale", "serve", "status", "--json")
     proxied = False
     if served:
         try:
-            handlers = (json.loads(served) or {}).get("Web") or {}
-            proxied = any(host.endswith(":80") for host in handlers)
+            web = (json.loads(served) or {}).get("Web") or {}
+            proxied = any(
+                (handler.get("Proxy") or "").rstrip("/").endswith(f":{port}")
+                for host, site in web.items()
+                if host.endswith(":80")
+                for handler in (site.get("Handlers") or {}).values()
+            )
         except json.JSONDecodeError:
             proxied = False
 
@@ -601,13 +606,17 @@ def _tailscale() -> dict:
 @app.get("/phone")
 def phone_link(request: Request) -> dict:
     """The address to open on a phone to carry on reading."""
-    port = request.url.port or 80
+    # The port this server is on, not the one in the address: through a proxy
+    # the address has none.
+    port = request.scope["server"][1]
     serving = _listening_beyond_this_machine(port)
 
     # A tunnel address works from anywhere and survives networks that keep
     # devices apart, so it is offered ahead of the plain local one.
-    tunnel = _tailscale()
-    if tunnel["name"]:
+    tunnel = _tailscale(port)
+    # Without a proxy the phone comes straight to this server, which only works
+    # if it is listening beyond this machine.
+    if tunnel["name"] and (tunnel["proxied"] or serving):
         # With a proxy in front there is no port to name, which leaves the
         # shortest address this machine can offer.
         host = tunnel["name"] if tunnel["proxied"] else f"{tunnel['name']}:{port}"
