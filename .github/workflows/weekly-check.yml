@@ -1,0 +1,45 @@
+name: Weekly check
+
+# A free bug hunt with no AI: finds likely bugs and known security problems.
+# When a check fails, GitHub sends an email.
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install
+        run: npm ci --prefix app
+
+      - name: Likely bugs in the Python
+        if: always()
+        run: uvx ruff@0.17.3 check app tests
+
+      - name: Likely bugs in the JavaScript
+        if: always()
+        run: >-
+          app/node_modules/.bin/eslint -c app/eslint.config.mjs
+          app/index.html app/continue.html extension/*.js editor-extension/src
+
+      - name: Known security problems in Python packages
+        if: always()
+        run: |
+          uv export --quiet --no-hashes --no-dev -o "$RUNNER_TEMP/requirements.txt"
+          uvx pip-audit@2.10.1 -r "$RUNNER_TEMP/requirements.txt" --disable-pip --no-deps
+
+      - name: Known security problems in JavaScript packages
+        if: always()
+        run: npm audit --prefix app

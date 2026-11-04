@@ -58,7 +58,7 @@ def _lang_code(voice: str) -> str:
 def normalize(text: str) -> str:
     """Tidy pasted article text: strip odd whitespace, keep paragraph breaks."""
     text = text.replace("\r\n", "\n").replace("\r", "\n")
-    text = text.replace(" ", " ").replace("​", "")
+    text = text.replace(" ", " ").replace("\u200b", "")
     # Curly quotes and dashes confuse the phonemizer more than they help.
     for bad, good in (
         ("‘", "'"), ("’", "'"),

@@ -25,3 +25,8 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.ruff.lint]
+# Likely bugs and security problems only, not style.
+select = ["F", "E9", "B", "PLE", "S"]
+ignore = ["S101", "S603", "S607", "S104"]

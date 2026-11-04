@@ -467,7 +467,7 @@ def _range_response(data: bytes, range_header: str | None) -> Response:
             start = max(len(data) - int(end_text), 0)
             end = len(data) - 1
     except ValueError:
-        raise HTTPException(status_code=416, detail="Bad range.")
+        raise HTTPException(status_code=416, detail="Bad range.") from None
 
     if start >= len(data):
         raise HTTPException(status_code=416, detail="Range out of bounds.")
