@@ -46,4 +46,6 @@ fi
 
 # The Mac app opens the page itself once the server answers.
 [[ -z "${NO_OPEN:-}" ]] && ( sleep 3; open "http://127.0.0.1:${PORT}" ) &
-exec uv run uvicorn app.server:app --host "$HOST" --port "$PORT"
+# A page following a reading holds a connection open, which would otherwise keep
+# a stopped server alive and rendering until the reading ends.
+exec uv run uvicorn app.server:app --host "$HOST" --port "$PORT" --timeout-graceful-shutdown 3
