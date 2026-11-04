@@ -1,0 +1,36 @@
+name: Merge version updates
+
+# Runs after the tests finish. It merges a Dependabot pull request only if the
+# commit that passed is still that pull request's latest commit.
+on:
+  workflow_run:
+    workflows: [Tests]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  merge:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      startsWith(github.event.workflow_run.head_branch, 'dependabot/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      BRANCH: ${{ github.event.workflow_run.head_branch }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Merge
+        run: |
+          number=$(gh pr list --head "$BRANCH" --author "app/dependabot" --state open \
+            --json number,headRefOid --jq ".[] | select(.headRefOid == \"$SHA\") | .number")
+          if [ -z "$number" ]; then
+            echo "No open Dependabot pull request has $SHA as its latest commit."
+            exit 0
+          fi
+          gh pr merge "$number" --merge --match-head-commit "$SHA" --delete-branch
