@@ -235,6 +235,7 @@ function load(html, options = {}) {
     audio: null,
     posted: [],
     selection: null,
+    server: "http://127.0.0.1:8888",
   };
 
   doc.body = body;
@@ -317,41 +318,28 @@ function load(html, options = {}) {
     // not hold the test run open at the end.
     setTimeout: (fn, ms, ...a) => { const t = setTimeout(fn, ms, ...a); t.unref?.(); return t; },
     clearTimeout,
-    setInterval: (fn, ms, ...a) => { const t = setInterval(fn, ms, ...a); t.unref?.(); return t; },
+    // Polling is sped up so a test does not spend most of its time waiting.
+    setInterval: (fn, ms, ...a) => { const t = setInterval(fn, Math.min(ms, 30), ...a); t.unref?.(); return t; },
     clearInterval,
     queueMicrotask,
     fetch: options.fetch || (() => Promise.reject(new Error("no server"))),
-    // The script prefers EventSource when no password is set. Deliver the
-    // progress the test's server would report, so playback actually starts.
-    EventSource: class {
-      constructor(url) {
-        state.eventSource = this;
-        this.url = url;
-        // The real stream keeps reporting until the job is done, so this
-        // does too. Tests that let the server finish partway through rely
-        // on the later reports arriving.
-        let left = 60;                 // never poll forever in a test
-        const tick = async () => {
-          if (this.closed || !this.onmessage || left-- <= 0) return;
-          try {
-            const reply = await context.fetch(url.replace("/progress/", "/progress-once/"));
-            const body = await reply.json();
-            this.onmessage({ data: JSON.stringify(body) });
-            if (!this.closed && body.state === "running") {
-              this.timer = setTimeout(tick, 30);
-              if (this.timer.unref) this.timer.unref();
-            }
-          } catch { if (this.onerror) this.onerror(); }
-        };
-        const first = setTimeout(tick, 5);
-        if (first.unref) first.unref();
-      }
-      close() { this.closed = true; clearTimeout(this.timer); }
-    },
     btoa: (s) => Buffer.from(s, "binary").toString("base64"),
     console,
     chrome: {
-      runtime: { onMessage: { addListener(fn) { state.onMessage = fn; } } },
+      runtime: {
+        onMessage: { addListener(fn) { state.onMessage = fn; } },
+        // Stands in for background.js, which makes every call to the server.
+        async sendMessage(message) {
+          if (message.type !== "api") return undefined;
+          try {
+            const reply = await context.fetch(state.server + message.path, message.options);
+            const body = await reply.json().catch(() => null);
+            return { ok: reply.ok, status: reply.status, statusText: reply.statusText, body };
+          } catch (error) {
+            return { failed: String(error) };
+          }
+        },
+      },
       storage: { sync: { get: async () => ({}), set: async () => {} } },
     },
   };
@@ -365,6 +353,7 @@ function load(html, options = {}) {
   return { context, state, doc, body,
     /** Send the script a message, as the background worker would. */
     send(message) {
+      if (message.settings?.server) state.server = message.settings.server;
       return new Promise((resolve) => state.onMessage(message, null, resolve));
     },
     /** A control in the player, by its id or its speed. */
