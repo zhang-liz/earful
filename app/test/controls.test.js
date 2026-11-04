@@ -198,3 +198,26 @@ test("opening the editor while playing says paused", async () => {
   assert.strictEqual(page.status(), "PAUSED");
   await page.close();
 });
+
+test("double-clicking a part does not start audio under the editor", async () => {
+  const page = await open();
+  await page.read("One two.\n\nThree four.");
+  await page.rendered(2, 2, "ready");
+  await page.tick();
+  page.$("toggle").click();
+  await page.tick();
+
+  const word = page.$("reader").children[1].querySelector(".w");
+  const before = page.state.plays.length;
+  const options = { bubbles: true };
+  word.dispatchEvent(new page.window.MouseEvent("click", options));
+  word.dispatchEvent(new page.window.MouseEvent("click", options));
+  word.dispatchEvent(new page.window.MouseEvent("dblclick", options));
+  await page.tick(20);
+
+  assert.strictEqual(page.get("editing"), true);
+  assert.strictEqual(page.state.plays.length, before);
+  assert.strictEqual(page.state.audio.paused, true);
+  assert.strictEqual(page.status(), "PAUSED");
+  await page.close();
+});

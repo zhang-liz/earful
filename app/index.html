@@ -844,6 +844,7 @@ function jumpTo(i, at = 0) {
 async function jumpToWord(partIndex, spanIndex) {
   if (!job || partIndex >= ready) return;
   const words = await loadTimings(partIndex);
+  if (editing) return;                  // this click was half of a double-click
   const part = $("reader").children[partIndex];
   if (!words || !part) { jumpTo(partIndex); return; }
 
