@@ -623,6 +623,7 @@ async function saveEditor(value) {
   const result = await response.json();
   job.texts = result.texts;
   job.total = result.total;
+  rememberJob();   // or a refresh would bring the old text back over the new audio
   timings.clear();
   ready = 0; index = 0; started = false; waiting = false; pendingSeek = 0;
   player.removeAttribute("src");
@@ -1026,23 +1027,29 @@ async function restoreJob() {
   } catch { return; }
   if (!saved || !saved.id) return;
 
+  let progress;
   try {
-    const response = await fetch(`/progress-once/${saved.id}`);
+    const response = await fetch(`/progress-once/${saved.id}`, { cache: "no-store" });
     if (!response.ok) { localStorage.removeItem(SAVED_JOB); return; }
+    progress = await response.json();
   } catch { return; }
 
+  // The server's text is the truth: an edit made here, or from another tab,
+  // may have changed the parts since this copy was saved.
   job = saved;
+  if (Array.isArray(progress.texts)) {
+    job.texts = progress.texts;
+    job.total = progress.total;
+    rememberJob();
+  }
   $("inputBox").classList.add("hidden");
   $("readerBox").classList.remove("hidden");
   drawReader();
 
   // Show what the server has already rendered, so a finished reading does not
   // claim to be still working while it waits for the first progress tick.
-  try {
-    const progress = await (await fetch(`/progress-once/${job.id}`)).json();
-    ready = progress.done;
-    if (progress.state === "ready") $("download").classList.remove("hidden");
-  } catch { /* the stream below will fill this in */ }
+  ready = progress.done;
+  if (progress.state === "ready") $("download").classList.remove("hidden");
 
   setStatus();
   handOff(true);

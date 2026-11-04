@@ -372,7 +372,9 @@ def progress_once(job_id: str) -> dict:
     job = JOBS.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job.")
-    return job.snapshot()
+    # The parts are included so a page coming back after a refresh shows the
+    # text as it is now, not as it was when the page last saved it.
+    return {**job.snapshot(), "texts": job.texts}
 
 
 @app.get("/progress/{job_id}")
