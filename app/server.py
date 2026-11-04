@@ -11,7 +11,6 @@ import queue
 import secrets
 import threading
 import time
-import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -48,6 +47,12 @@ async def require_password(request: Request, call_next):
     if not PASSWORD:
         return await call_next(request)
 
+    # An <audio> element cannot send a password, so a part's audio is open to
+    # anyone who has the reading's id. The id is long and random, and only comes
+    # from routes that do need the password.
+    if request.method == "GET" and request.url.path.startswith("/chunk/"):
+        return await call_next(request)
+
     header = request.headers.get("authorization", "")
     if header.startswith("Basic "):
         try:
@@ -56,8 +61,9 @@ async def require_password(request: Request, call_next):
             decoded = ""
         _, _, supplied = decoded.partition(":")
         # Compared in constant time so the password cannot be guessed by
-        # timing how long the check takes.
-        if secrets.compare_digest(supplied, PASSWORD):
+        # timing how long the check takes. As bytes, because the comparison
+        # raises an error on text with any letter outside ASCII.
+        if secrets.compare_digest(supplied.encode(), PASSWORD.encode()):
             return await call_next(request)
 
     return Response(
@@ -250,7 +256,7 @@ def speak(request: SpeakRequest) -> dict:
         raise HTTPException(status_code=400, detail=f"Unknown voice: {request.voice!r}")
 
     job = Job(
-        id=uuid.uuid4().hex[:12],
+        id=secrets.token_hex(16),
         voice=request.voice,
         # Render at a fixed 1.0 and let the browser change tempo live, so the
         # speed slider never forces a re-render.
