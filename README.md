@@ -46,6 +46,9 @@ The Mac does all the work, so it must be awake and on the same network. A
 sleeping or closed Mac cannot answer. Note the address changes if your router
 gives the Mac a different one; check with `ipconfig getifaddr en0`.
 
+To reach the server by a name of your own on a public domain, list it in
+`TTS_ALLOWED_HOSTS`, separated by commas. Other names on the internet are refused.
+
 `TTS_PASSWORD` is optional but strongly recommended: without it, anyone on the
 network can open the page. With no password set, `./run.sh` alone stays
 local-only and unprotected, which is fine.
