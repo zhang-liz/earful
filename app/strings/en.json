@@ -61,6 +61,7 @@
   "legend.reader": "// CLICK A WORD TO JUMP — DOUBLE-CLICK TO EDIT ALL",
   "reader.edit": "✎ EDIT TEXT",
   "reader.editHelp": "BLANK LINE STARTS A NEW PART / CMD+ENTER SAVES / ESC CANCELS",
+  "reader.new": "+ NEW TEXT",
   "reading.title": "Your reading",
   "error.generic": "Something went wrong.",
   "error.reach": "Could not reach the server: {error}",

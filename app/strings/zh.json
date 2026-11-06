@@ -61,6 +61,7 @@
   "legend.reader": "// 点一个词就跳到那里 — 双击可以编辑全文",
   "reader.edit": "✎ 编辑文字",
   "reader.editHelp": "空一行开始新的一段 / CMD+ENTER 保存 / ESC 取消",
+  "reader.new": "＋ 换一篇",
   "reading.title": "你的朗读",
   "error.generic": "出了点问题。",
   "error.reach": "连不上 Earful：{error}",
