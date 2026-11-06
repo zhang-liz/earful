@@ -251,6 +251,12 @@ also pick an English voice and a Mandarin voice, and can force the reading
 language. Every word is in `extension/_locales/<language>/messages.json`; add
 a word to both files, or `extension/check-manifest.py` and the tests fail.
 
+To publish it, `extension/pack.sh` makes `dist/earful-extension-<version>.zip`
+with only what Chrome loads, and checks it. The store texts in both languages,
+the reason for each permission, the privacy policy and the screenshots are in
+`extension/store/`. Publish on Edge Add-ons too: the Chrome Web Store cannot be
+reached from mainland China.
+
 The server must be running, because it does the speaking. To point the
 extension at a server on another machine, run `./run.sh --lan`, set
 `TTS_PASSWORD`, and put that address and password in the extension's settings.
