@@ -221,6 +221,14 @@ or only the text you selected. Click again to pause or play. Right-click a page
 for **Read the whole page** or **Read this aloud**. A small player appears at
 the bottom with play, skip and speed buttons.
 
+While it reads:
+
+- Click any word on the page to read from there.
+- `-` and `+` step the speed from 0.75x to 3x. Click the speed to go back to 1x.
+- `Alt+,` and `Alt+.` skip back and forward a part.
+- Drag the player by its left edge. The size button makes it small; it stays
+  small next time.
+
 Menus, sidebars and footers are left out, and so is code: a `<pre>` block or
 an inline `<code>` span is punctuation when read aloud, so it is skipped.
 

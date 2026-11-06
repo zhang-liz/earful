@@ -4,3 +4,8 @@
   background-color: #f2b33d;
   color: #0b0a11;
 }
+
+/* The whole part being read, faint, so the eye can follow along. */
+::highlight(read-it-to-me-part) {
+  background-color: rgba(242, 179, 61, 0.2);
+}

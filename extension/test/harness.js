@@ -12,7 +12,7 @@ const vm = require("node:vm");
 
 /** A text node. */
 class TextNode {
-  constructor(value) { this.nodeValue = value; this.parentElement = null; }
+  constructor(value) { this.nodeValue = value; this.parentElement = null; this.nodeType = 3; }
   get textContent() { return this.nodeValue; }
 }
 
@@ -246,7 +246,8 @@ function load(html, options = {}) {
   doc.getElementById = (id) => body.getElementById(id);
   doc.querySelector = (s) => body.querySelector(s);
   doc.querySelectorAll = (s) => body.querySelectorAll(s);
-  doc.addEventListener = () => {};
+  doc.listeners = {};
+  doc.addEventListener = (type, fn) => { (doc.listeners[type] ||= []).push(fn); };
   doc.getSelection = () => state.selection;
   doc.visibilityState = "visible";
 
@@ -355,6 +356,17 @@ function load(html, options = {}) {
     send(message) {
       if (message.settings?.server) state.server = message.settings.server;
       return new Promise((resolve) => state.onMessage(message, null, resolve));
+    },
+    /**
+     * Click the page at a character of an element's first run of text, as a
+     * person clicking a word would.
+     */
+    clickPage(selector, nth = 0, offset = 0, extra = {}) {
+      const element = doc.querySelectorAll(selector)[nth];
+      const text = element.children.find((c) => c instanceof TextNode);
+      doc.caretPositionFromPoint = () => ({ offsetNode: text, offset });
+      const event = { type: "click", target: element, button: 0, clientX: 1, clientY: 1, ...extra };
+      for (const fn of doc.listeners.click || []) fn(event);
     },
     /** A control in the player, by its id or its speed. */
     button(name) {

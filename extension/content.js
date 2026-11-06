@@ -82,19 +82,27 @@
         .status { color: #a09c94; white-space: nowrap; overflow: hidden;
                   text-overflow: ellipsis; flex: 1; min-width: 90px; }
         .close { margin-left: 2px; }
-        .speeds { display: flex; gap: 5px; }
+        .speeds { display: flex; gap: 5px; align-items: center; }
+        .rate { min-width: 52px; }
+        .grip { cursor: grab; color: #6f6880; padding: 0 2px; user-select: none; touch-action: none; }
+        /* Small: just play, the status and the way back to full size. */
+        .bar.mini { gap: 6px; padding: 6px 8px; }
+        .bar.mini .full { display: none; }
+        .bar.mini .status { min-width: 0; max-width: 140px; }
       </style>
-      <div class="bar" role="region" aria-label="Earful">
-        <button class="play" id="play" title="Play or pause">&#9654;</button>
-        <button id="prev" title="Previous part">&#9198;</button>
-        <button id="next" title="Next part">&#9197;</button>
-        <span class="speeds">
-          <button data-speed="1">1x</button>
-          <button data-speed="1.5">1.5x</button>
-          <button data-speed="2">2x</button>
+      <div class="bar" id="bar" role="region" aria-label="Earful">
+        <span class="grip" id="grip" title="Drag to move">&#8942;&#8942;</span>
+        <button class="play" id="play" title="Play or pause (Alt+R)">&#9654;</button>
+        <button class="full" id="prev" title="Previous part (Alt+,)">&#9198;</button>
+        <button class="full" id="next" title="Next part (Alt+.)">&#9197;</button>
+        <span class="speeds full">
+          <button id="slower" title="Slower">&minus;</button>
+          <button class="rate" id="rate" title="Back to 1x">1x</button>
+          <button id="faster" title="Faster">+</button>
         </span>
-        <span class="status" id="status">Getting ready...</span>
-        <button id="settings" title="Voice and settings">&#9881;</button>
+        <span class="status" id="status" title="Click any sentence on the page to read from there">Getting ready...</span>
+        <button class="full" id="settings" title="Voice and settings">&#9881;</button>
+        <button id="size" title="Make smaller">&#9662;</button>
         <button class="close" id="close" title="Stop and close">&#10005;</button>
       </div>`;
     (document.body || document.documentElement).append(host);
@@ -104,7 +112,7 @@
       root,
       play: $("play"),
       status: $("status"),
-      speeds: [...root.querySelectorAll("[data-speed]")],
+      rate: $("rate"),
       setStatus(text) { $("status").textContent = text; },
       setPlaying(on) { $("play").innerHTML = on ? "&#10074;&#10074;" : "&#9654;"; },
     };
@@ -116,22 +124,66 @@
     $("settings").addEventListener("click", () => {
       chrome.runtime.sendMessage({ type: "open-settings" }).catch(() => {});
     });
-    for (const button of ui.speeds) {
-      button.addEventListener("click", () => setSpeed(Number(button.dataset.speed)));
-    }
+    $("slower").addEventListener("click", () => stepSpeed(-1));
+    $("faster").addEventListener("click", () => stepSpeed(1));
+    $("rate").addEventListener("click", () => setSpeed(1));
+    const bar = $("bar");
+    $("size").addEventListener("click", () => setMini(!bar.classList.contains("mini")));
+    makeDraggable(bar, $("grip"));
     setSpeed(config.speed);
+    chrome.storage.sync.get(["mini"]).then((saved) => setMini(Boolean(saved?.mini)), () => {});
     return ui;
+  }
+
+  // The speeds the - and + buttons step through.
+  const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+
+  function stepSpeed(direction) {
+    const now = SPEEDS.findIndex((rate) => rate >= config.speed - 0.001);
+    const from = now < 0 ? SPEEDS.length - 1 : now;
+    setSpeed(SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, from + direction))]);
   }
 
   function setSpeed(rate) {
     config.speed = rate;
     player.playbackRate = rate;
     chrome.storage.sync.set({ speed: rate });
-    if (ui) {
-      for (const button of ui.speeds) {
-        button.classList.toggle("on", Number(button.dataset.speed) === rate);
-      }
-    }
+    if (ui) ui.rate.textContent = `${rate}x`;
+  }
+
+  /** Shrink the player to play and status, or back. Remembered for next time. */
+  function setMini(on) {
+    if (!ui) return;
+    const bar = ui.root.getElementById("bar");
+    if (!bar) return;
+    bar.classList.toggle("mini", on);
+    const size = ui.root.getElementById("size");
+    size.innerHTML = on ? "&#9652;" : "&#9662;";
+    size.title = on ? "Make bigger" : "Make smaller";
+    chrome.storage.sync.set({ mini: on });
+  }
+
+  /** Let the player be moved out of the way of what is being read. */
+  function makeDraggable(bar, grip) {
+    grip.addEventListener("pointerdown", (event) => {
+      const box = bar.getBoundingClientRect?.();
+      if (!box) return;
+      const dx = event.clientX - box.left;
+      const dy = event.clientY - box.top;
+      grip.setPointerCapture?.(event.pointerId);
+      const move = (e) => {
+        const left = Math.max(0, Math.min(innerWidth - box.width, e.clientX - dx));
+        const top = Math.max(0, Math.min(innerHeight - box.height, e.clientY - dy));
+        Object.assign(bar.style, { left: `${left}px`, top: `${top}px`, bottom: "auto", transform: "none" });
+      };
+      const done = () => {
+        grip.removeEventListener("pointermove", move);
+        grip.removeEventListener("pointerup", done);
+      };
+      grip.addEventListener("pointermove", move);
+      grip.addEventListener("pointerup", done);
+      event.preventDefault();
+    });
   }
 
   function setStatus() {
@@ -222,7 +274,18 @@
   function lightRange(range) {
     if (!range || !CSS.highlights) return;
     litRange = range;
-    CSS.highlights.set("read-it-to-me", new Highlight(range));
+    const word = new Highlight(range);
+    word.priority = 1;               // over the part's own, fainter highlight
+    CSS.highlights.set("read-it-to-me", word);
+  }
+
+  /** A faint mark over the whole part being read, so the eye can follow. */
+  function lightPart(i) {
+    if (!CSS.highlights) return;
+    const source = sourceRanges[i];
+    const range = source && rangeFor(source.start, source.end);
+    if (range) CSS.highlights.set("read-it-to-me-part", new Highlight(range));
+    else CSS.highlights.delete("read-it-to-me-part");
   }
 
   const clean = (s) => s.toLowerCase().replace(/[^a-z0-9']/g, "");
@@ -332,6 +395,7 @@
 
     waiting = false;
     index = i;
+    lightPart(i);
     const src = `${config.server}/chunk/${job.id}/${i}.wav`;
     if (player.getAttribute("src") === src) player.load(); else player.src = src;
     player.playbackRate = config.speed;
@@ -483,10 +547,62 @@
     timings.clear();
     sourceRanges = [];
     readingSelection = "";
+    CSS.highlights?.delete("read-it-to-me-part");
     pageIndex = null;
     document.getElementById(HOST_ID)?.remove();
     ui = null;
   }
+
+  /* ---------------- click a word to read from there ---------------- */
+
+  /** Where in the page text a point on screen falls, or -1. */
+  function offsetAt(x, y) {
+    if (!pageIndex) return -1;
+    let node = null, within = 0;
+    const spot = document.caretPositionFromPoint?.(x, y);
+    if (spot) { node = spot.offsetNode; within = spot.offset; }
+    else {
+      const range = document.caretRangeFromPoint?.(x, y);
+      if (range) { node = range.startContainer; within = range.startOffset; }
+    }
+    if (!node || node.nodeType !== 3) return -1;   // not in text
+    const entry = pageIndex.nodes.find((e) => e.node === node);
+    return entry ? entry.start + within : -1;
+  }
+
+  /** Carry on reading from a point in the page text. False if it is not read. */
+  async function readFrom(offset) {
+    const i = sourceRanges.findIndex((r) => r && offset >= r.start && offset <= r.end);
+    if (i < 0) return false;
+    let at = 0;
+    const words = await loadTimings(i);
+    if (words) {
+      for (const span of alignToPage(sourceRanges[i].start, sourceRanges[i].text, words)) {
+        if (span.start <= offset) at = span.s; else break;
+      }
+    }
+    started = true;
+    playing = true;
+    needsClick = false;
+    ui?.setPlaying(true);
+    playChunk(i, at);
+    return true;
+  }
+
+  // While a reading is open, a click on a word carries on from there, as on
+  // the Earful page and in NaturalReader. Links, buttons, fields and a click
+  // that finishes selecting text keep their usual meaning.
+  document.addEventListener("click", (event) => {
+    if (!job || event.button !== 0 || event.defaultPrevented) return;
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const target = event.target;
+    if (!target?.closest || target.closest(
+      `#${HOST_ID}, a, button, input, textarea, select, label, summary, video, audio, ` +
+      "[contenteditable], [role=button], [role=link], [role=tab], [role=menuitem]")) return;
+    if (String(window.getSelection?.() || "").trim()) return;
+    const offset = offsetAt(event.clientX, event.clientY);
+    if (offset >= 0) readFrom(offset);
+  });
 
   /* ---------------- starting a read ---------------- */
 
@@ -688,6 +804,8 @@
       else { buildUI(); ui.setStatus("Found nothing to read on this page."); }
     } else if (message.type === "toggle") {
       toggle();
+    } else if (message.type === "next" || message.type === "prev") {
+      if (job) jumpTo(index + (message.type === "next" ? 1 : -1));
     } else if (message.type === "stop") {
       stop();
     }

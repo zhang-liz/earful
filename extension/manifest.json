@@ -50,6 +50,20 @@
         "mac": "Alt+R"
       },
       "description": "Read the page, or the selected text. Again to pause."
+    },
+    "skip-back": {
+      "suggested_key": {
+        "default": "Alt+Comma",
+        "mac": "Alt+Comma"
+      },
+      "description": "Go back a part"
+    },
+    "skip-forward": {
+      "suggested_key": {
+        "default": "Alt+Period",
+        "mac": "Alt+Period"
+      },
+      "description": "Go forward a part"
     }
   },
   "optional_host_permissions": [
