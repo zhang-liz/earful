@@ -31,6 +31,52 @@ def bad_host(p):
     if host.startswith("*."): host = host[2:]
     return "*" in host
 
+def check_locales(folder, m):
+    """Chrome refuses to load an extension whose word tables do not add up."""
+    bad = []
+    root = os.path.join(folder, "_locales")
+    used = set(re.findall(r"__MSG_(\w+)__", json.dumps(m)))
+    default = m.get("default_locale")
+    if not os.path.isdir(root):
+        if default: bad.append("default_locale is set but there is no _locales folder")
+        if used: bad.append("__MSG_ words used but there is no _locales folder")
+        return bad
+    if not default:
+        return bad + ["_locales exists but default_locale is not set"]
+
+    tables = {}
+    for name in sorted(os.listdir(root)):
+        path = os.path.join(root, name, "messages.json")
+        if not os.path.isfile(path):
+            continue
+        try:
+            tables[name] = json.load(open(path, encoding="utf-8"))
+        except Exception as e:
+            bad.append(f"{name}/messages.json will not parse: {e}")
+    if default not in tables:
+        return bad + [f"default_locale {default!r} has no messages.json"]
+
+    for name, table in tables.items():
+        for key, value in table.items():
+            if not re.match(r"^[A-Za-z0-9_@]+$", key):
+                bad.append(f"{name}: bad message name {key!r}")
+            if not isinstance(value, dict) or not isinstance(value.get("message"), str):
+                bad.append(f"{name}: {key} has no message")
+            elif "$" in value["message"]:
+                # Chrome reads $name$ as a placeholder; ours are {name}.
+                bad.append(f"{name}: {key} has a $ in it")
+        missing = set(tables[default]) - set(table)
+        extra = set(table) - set(tables[default])
+        if missing: bad.append(f"{name} is missing {sorted(missing)}")
+        if extra: bad.append(f"{name} has words {default} lacks: {sorted(extra)}")
+    for key in sorted(used - set(tables[default])):
+        bad.append(f"manifest uses __MSG_{key}__ but {default} has no {key}")
+    described = re.fullmatch(r"__MSG_(\w+)__", m.get("description", ""))
+    for name, table in tables.items():
+        if described and len(table.get(described.group(1), {}).get("message", "")) > 132:
+            bad.append(f"{name}: description over 132 characters")
+    return bad
+
 def check(folder):
     path = os.path.join(folder, "manifest.json")
     try:
@@ -55,6 +101,8 @@ def check(folder):
         for p in cs.get("matches", []):
             if p != "<all_urls>" and bad_host(p):
                 bad.append(f"invalid content script match: {p}")
+
+    bad += check_locales(folder, m)
 
     files = []
     if m.get("background",{}).get("service_worker"): files.append(m["background"]["service_worker"])

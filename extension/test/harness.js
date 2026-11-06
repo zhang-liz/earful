@@ -42,7 +42,9 @@ class Element {
 
   setAttribute(k, v) {
     this.attributes[k] = String(v);
-    if (k.startsWith("data-")) this.dataset[k.slice(5)] = String(v);
+    if (k.startsWith("data-")) {
+      this.dataset[k.slice(5).replace(/-(\w)/g, (_, c) => c.toUpperCase())] = String(v);
+    }
   }
   getAttribute(k) { return this.attributes[k] ?? null; }
   removeAttribute(k) { delete this.attributes[k]; }
@@ -54,6 +56,7 @@ class Element {
     }
   }
   appendChild(n) { this.append(n); return n; }
+  replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
   remove() {
     const p = this.parentElement;
     if (p) p.children = p.children.filter((c) => c !== this);
@@ -172,7 +175,7 @@ function parse(html, doc) {
     }
     if (closing) { if (stack.length > 1) stack.pop(); continue; }
     const el = new Element(tag, doc);
-    for (const a of attrs.matchAll(/([a-zA-Z-]+)(?:="([^"]*)")?/g)) {
+    for (const a of attrs.matchAll(/([a-zA-Z][a-zA-Z0-9-]*)(?:="([^"]*)")?/g)) {
       el.setAttribute(a[1], a[2] ?? "");
     }
     stack[stack.length - 1].append(el);
@@ -224,6 +227,14 @@ class Range {
  * @param {string} html     the page body
  * @param {object} options  { fetch, blocked }
  */
+/** The word table for a language, as the background worker sends it. */
+function words(language = "en") {
+  const folder = language === "zh" ? "zh_CN" : "en";
+  const file = path.join(__dirname, "..", "_locales", folder, "messages.json");
+  const table = JSON.parse(fs.readFileSync(file, "utf8"));
+  return Object.fromEntries(Object.entries(table).map(([key, value]) => [key, value.message]));
+}
+
 function load(html, options = {}) {
   const doc = {};
   const body = parse(html, doc);
@@ -352,8 +363,14 @@ function load(html, options = {}) {
   vm.runInContext(code, context);
 
   return { context, state, doc, body,
-    /** Send the script a message, as the background worker would. */
+    /**
+     * Send the script a message, as the background worker would: with the
+     * words for the reader's language (English unless options.language says).
+     */
     send(message) {
+      if (message.settings && !message.settings.strings) {
+        message = { ...message, settings: { strings: words(options.language), ...message.settings } };
+      }
       if (message.settings?.server) state.server = message.settings.server;
       return new Promise((resolve) => state.onMessage(message, null, resolve));
     },
@@ -390,4 +407,4 @@ function load(html, options = {}) {
   };
 }
 
-module.exports = { load, Element, TextNode };
+module.exports = { load, words, parse, Element, TextNode };

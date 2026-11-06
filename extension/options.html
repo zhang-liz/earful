@@ -23,23 +23,42 @@
   .row { display: flex; gap: 7px; }
   .row button { flex: 1; }
   .note { color: #8b849c; font-size: 10px; margin: 10px 0 0; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+  .top h1 { margin: 0; }
+  button.lang { width: auto; margin: 0; padding: 4px 9px; background: #2c283d; color: #ece5d8; font-weight: normal; }
   .ok { color: #7bc86c; }
   .bad { color: #e06666; }
 </style>
 
-<h1>EARFUL SETTINGS</h1>
-<p class="note">To read a page, click the Earful icon or press Alt+R. Select text first to read only that.</p>
+<div class="top">
+  <h1 data-i18n="optionsTitle"></h1>
+  <button id="language" class="lang" data-i18n="languageSwitch" data-i18n-title="languageLabel"></button>
+</div>
+<p class="note" data-i18n="optionsHowTo"></p>
 
-<label for="voice">Voice</label>
+<label for="voice" id="voiceLabel" data-i18n="optionsVoice"></label>
 <select id="voice"></select>
 
-<label for="server">Server address</label>
+<div id="zhRow" hidden>
+  <label for="voiceZh" data-i18n="optionsVoiceZh"></label>
+  <select id="voiceZh"></select>
+
+  <label for="readLanguage" data-i18n="optionsReadLang"></label>
+  <select id="readLanguage">
+    <option value="" data-i18n="readLangAuto"></option>
+    <option value="zh" data-i18n="readLangZh"></option>
+    <option value="en" data-i18n="readLangEn"></option>
+  </select>
+</div>
+
+<label for="server" data-i18n="optionsServer"></label>
 <input id="server" type="text" spellcheck="false" placeholder="http://127.0.0.1:8888" />
 
-<label for="password">Password (only if you set one)</label>
+<label for="password" data-i18n="optionsPassword"></label>
 <input id="password" type="password" autocomplete="off" />
 
-<button id="save" class="ghost">Save settings</button>
-<p class="note" id="note">Checking the server...</p>
+<button id="save" class="ghost" data-i18n="optionsSave"></button>
+<p class="note" id="note" data-i18n="optionsChecking"></p>
 
+<script src="strings.js"></script>
 <script src="options.js"></script>

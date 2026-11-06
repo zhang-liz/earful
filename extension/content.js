@@ -7,7 +7,7 @@
 
   const HOST_ID = "read-it-to-me-root";
 
-  let config = { server: "http://127.0.0.1:8888", password: "", voice: "af_heart", speed: 1 };
+  let config = { server: "http://127.0.0.1:8888", password: "", voice: "af_heart", speed: 1, strings: {} };
   let job = null;          // { id, total, texts }
   let ready = 0;           // parts the server has finished
   let index = 0;           // part being played
@@ -29,6 +29,26 @@
   player.preservesPitch = true;
   player.mozPreservesPitch = true;
   player.webkitPreservesPitch = true;
+
+  /* ---------------- words ---------------- */
+
+  /**
+   * A text in the reader's language, with {name} filled in from vars.
+   *
+   * The words come with every command from the background worker, which reads
+   * them from _locales (see strings.js). A missing key shows itself.
+   */
+  function t(key, vars = {}) {
+    const text = config.strings?.[key] ?? key;
+    return text.replace(/\{(\w+)\}/g, (all, name) => (name in vars ? String(vars[name]) : all));
+  }
+
+  /** What the server refused, in the reader's language when it sent a code. */
+  function refusal(answer) {
+    const key = answer?.code ? `error_${answer.code}` : "";
+    if (key && config.strings?.[key]) return t(key);
+    return answer?.detail || t("statusRefused");
+  }
 
   /* ---------------- server ---------------- */
 
@@ -91,19 +111,19 @@
         .bar.mini .status { min-width: 0; max-width: 140px; }
       </style>
       <div class="bar" id="bar" role="region" aria-label="Earful">
-        <span class="grip" id="grip" title="Drag to move">&#8942;&#8942;</span>
-        <button class="play" id="play" title="Play or pause (Alt+R)">&#9654;</button>
-        <button class="full" id="prev" title="Previous part (Alt+,)">&#9198;</button>
-        <button class="full" id="next" title="Next part (Alt+.)">&#9197;</button>
+        <span class="grip" id="grip" title="${t("playerDrag")}">&#8942;&#8942;</span>
+        <button class="play" id="play" title="${t("playerPlay")}">&#9654;</button>
+        <button class="full" id="prev" title="${t("playerPrev")}">&#9198;</button>
+        <button class="full" id="next" title="${t("playerNext")}">&#9197;</button>
         <span class="speeds full">
-          <button id="slower" title="Slower">&minus;</button>
-          <button class="rate" id="rate" title="Back to 1x">1x</button>
-          <button id="faster" title="Faster">+</button>
+          <button id="slower" title="${t("playerSlower")}">&minus;</button>
+          <button class="rate" id="rate" title="${t("playerNormal")}">1x</button>
+          <button id="faster" title="${t("playerFaster")}">+</button>
         </span>
-        <span class="status" id="status" title="Click any sentence on the page to read from there">Getting ready...</span>
-        <button class="full" id="settings" title="Voice and settings">&#9881;</button>
-        <button id="size" title="Make smaller">&#9662;</button>
-        <button class="close" id="close" title="Stop and close">&#10005;</button>
+        <span class="status" id="status" title="${t("playerHint")}">${t("statusGettingReady")}</span>
+        <button class="full" id="settings" title="${t("playerSettings")}">&#9881;</button>
+        <button id="size" title="${t("playerSmaller")}">&#9662;</button>
+        <button class="close" id="close" title="${t("playerClose")}">&#10005;</button>
       </div>`;
     (document.body || document.documentElement).append(host);
 
@@ -159,7 +179,7 @@
     bar.classList.toggle("mini", on);
     const size = ui.root.getElementById("size");
     size.innerHTML = on ? "&#9652;" : "&#9662;";
-    size.title = on ? "Make bigger" : "Make smaller";
+    size.title = t(on ? "playerBigger" : "playerSmaller");
     chrome.storage.sync.set({ mini: on });
   }
 
@@ -188,13 +208,13 @@
 
   function setStatus() {
     if (!ui || !job) return;
-    if (needsClick) { ui.setStatus("Click here to start"); return; }
+    if (needsClick) { ui.setStatus(t("statusClickToStart")); return; }
     ui.setStatus(
-      waiting ? "Buffering..."
-        : playing ? `Part ${index + 1} / ${job.total}`
-        : index >= job.total ? "Finished"
-        : started ? "Paused"
-        : `Getting ready... ${ready}/${job.total}`
+      waiting ? t("statusBuffering")
+        : playing ? t("statusPart", { index: index + 1, total: job.total })
+        : index >= job.total ? t("statusFinished")
+        : started ? t("statusPaused")
+        : t("statusPreparing", { ready, total: job.total })
     );
   }
 
@@ -443,7 +463,7 @@
     playing = false;
     needsClick = true;
     ui?.setPlaying(false);
-    ui?.setStatus("Click here to start");
+    ui?.setStatus(t("statusClickToStart"));
   }
 
   function jumpTo(i) {
@@ -656,7 +676,7 @@
         // The server went away. Say so once and stop asking, rather than
         // knocking on a closed door every second for the rest of the day.
         stopListening();
-        ui?.setStatus(`Lost the server at ${config.server}.`);
+        ui?.setStatus(t("statusLostServer", { server: config.server }));
       }
     };
     poller = setInterval(ask, 500);
@@ -683,16 +703,30 @@
     if (update.state === "ready") stopListening();
     if (update.state === "error") {
       stopListening();
-      ui?.setStatus(update.error || "Something went wrong.");
+      // The server's own words are for whoever fixes it, not the reader.
+      if (update.error) console.warn("Earful:", update.error);
+      ui?.setStatus(t("statusFailed"));
     }
     setStatus();
+  }
+
+  /**
+   * What to ask the server for. `voice` alone is all an older server reads:
+   * it is the English pick, and newer servers take it as that. The Mandarin
+   * pick and a forced reading language ride along for newer ones.
+   */
+  function speakBody(text) {
+    const body = { text, voice: config.voice };
+    if (config.voiceZh) body.voices = { zh: config.voiceZh };
+    if (config.readLanguage) body.language = config.readLanguage;
+    return body;
   }
 
   async function read(text, searchFrom = 0) {
     if (!text.trim()) return;
     stop();
     buildUI();
-    ui.setStatus("Getting ready...");
+    ui.setStatus(t("statusGettingReady"));
     pageIndex = indexText(document.body);
 
     let response;
@@ -700,15 +734,14 @@
       response = await api("/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voice: config.voice }),
+        body: JSON.stringify(speakBody(text)),
       });
     } catch (error) {
-      ui.setStatus(`Cannot reach ${config.server}. Is the app running?`);
+      ui.setStatus(t("statusCannotReach", { server: config.server }));
       return;
     }
     if (!response.ok) {
-      const detail = await response.json().catch(() => ({ detail: response.statusText }));
-      ui.setStatus(detail.detail || "The server refused that.");
+      ui.setStatus(refusal(await response.json().catch(() => null)));
       return;
     }
 
@@ -805,11 +838,11 @@
     } else if (message.type === "read-selection") {
       const info = selectionInfo();
       if (info) { read(info.text, info.from); readingSelection = info.text.trim(); }
-      else { buildUI(); ui.setStatus("Select some text first."); }
+      else { buildUI(); ui.setStatus(t("statusSelectFirst")); }
     } else if (message.type === "read-page") {
       const text = pageText();
       if (text) read(text, 0);
-      else { buildUI(); ui.setStatus("Found nothing to read on this page."); }
+      else { buildUI(); ui.setStatus(t("statusNothing")); }
     } else if (message.type === "toggle") {
       toggle();
     } else if (message.type === "next" || message.type === "prev") {

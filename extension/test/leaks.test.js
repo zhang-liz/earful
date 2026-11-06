@@ -76,7 +76,7 @@ test("losing the server says so instead of failing quietly", async () => {
   await settle(100);
   s.state.broken = true;
   await settle(1000);
-  assert.match(h.status(), /Lost the server/);
+  assert.match(h.status(), /Lost the Earful app/);
 });
 
 test("closing the player stops the polling too", async () => {

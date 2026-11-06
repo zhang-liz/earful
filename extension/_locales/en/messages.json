@@ -1,0 +1,182 @@
+{
+  "extDescription": {
+    "message": "Read any page aloud in a natural voice, using the Earful app on your own computer."
+  },
+  "actionTitle": {
+    "message": "Earful: read this page aloud (Alt+R)"
+  },
+  "cmdRead": {
+    "message": "Read the page, or the selected text. Again to pause."
+  },
+  "cmdBack": {
+    "message": "Go back a part"
+  },
+  "cmdForward": {
+    "message": "Go forward a part"
+  },
+  "menuReadSelection": {
+    "message": "Read this aloud"
+  },
+  "menuReadPage": {
+    "message": "Read the whole page"
+  },
+  "playerDrag": {
+    "message": "Drag to move"
+  },
+  "playerPlay": {
+    "message": "Play or pause (Alt+R)"
+  },
+  "playerPrev": {
+    "message": "Previous part (Alt+,)"
+  },
+  "playerNext": {
+    "message": "Next part (Alt+.)"
+  },
+  "playerSlower": {
+    "message": "Slower"
+  },
+  "playerNormal": {
+    "message": "Back to normal speed"
+  },
+  "playerFaster": {
+    "message": "Faster"
+  },
+  "playerHint": {
+    "message": "Click any sentence on the page to read from there"
+  },
+  "playerSettings": {
+    "message": "Voice and settings"
+  },
+  "playerSmaller": {
+    "message": "Make smaller"
+  },
+  "playerBigger": {
+    "message": "Make bigger"
+  },
+  "playerClose": {
+    "message": "Stop and close"
+  },
+  "statusClickToStart": {
+    "message": "Click here to start"
+  },
+  "statusBuffering": {
+    "message": "Buffering..."
+  },
+  "statusPart": {
+    "message": "Part {index} / {total}"
+  },
+  "statusFinished": {
+    "message": "Finished"
+  },
+  "statusPaused": {
+    "message": "Paused"
+  },
+  "statusPreparing": {
+    "message": "Getting ready... {ready}/{total}"
+  },
+  "statusGettingReady": {
+    "message": "Getting ready..."
+  },
+  "statusLostServer": {
+    "message": "Lost the Earful app at {server}."
+  },
+  "statusFailed": {
+    "message": "Something went wrong. Try again."
+  },
+  "statusCannotReach": {
+    "message": "Cannot reach {server}. Is the Earful app open?"
+  },
+  "statusRefused": {
+    "message": "The Earful app refused that."
+  },
+  "statusSelectFirst": {
+    "message": "Select some text first."
+  },
+  "statusNothing": {
+    "message": "Found nothing to read on this page."
+  },
+  "error_no_text": {
+    "message": "There is no text to read."
+  },
+  "error_unknown_job": {
+    "message": "This reading is gone. Start it again."
+  },
+  "error_not_ready": {
+    "message": "That part is not ready yet."
+  },
+  "error_still_reading": {
+    "message": "Still reading. Wait until it is done."
+  },
+  "error_bad_range": {
+    "message": "That part of the reading is not there."
+  },
+  "error_unknown_voice": {
+    "message": "That voice is not available. Pick another in the settings."
+  },
+  "error_unknown_language": {
+    "message": "The Earful app cannot read that language."
+  },
+  "error_voice_unavailable": {
+    "message": "That voice is still downloading. Try again soon."
+  },
+  "languageSwitch": {
+    "message": "中文"
+  },
+  "languageLabel": {
+    "message": "Show the extension in another language"
+  },
+  "optionsTitle": {
+    "message": "EARFUL SETTINGS"
+  },
+  "optionsHowTo": {
+    "message": "To read a page, click the Earful icon or press Alt+R. Select text first to read only that."
+  },
+  "optionsVoice": {
+    "message": "Voice"
+  },
+  "optionsVoiceEn": {
+    "message": "English voice"
+  },
+  "optionsVoiceZh": {
+    "message": "Chinese voice"
+  },
+  "optionsReadLang": {
+    "message": "Reading language"
+  },
+  "readLangAuto": {
+    "message": "Automatic (from the text)"
+  },
+  "readLangZh": {
+    "message": "Chinese"
+  },
+  "readLangEn": {
+    "message": "English"
+  },
+  "optionsServer": {
+    "message": "Earful app address"
+  },
+  "optionsPassword": {
+    "message": "Password (only if you set one)"
+  },
+  "optionsSave": {
+    "message": "Save settings"
+  },
+  "optionsChecking": {
+    "message": "Checking the Earful app..."
+  },
+  "optionsWrongPassword": {
+    "message": "Wrong password."
+  },
+  "optionsServerSaid": {
+    "message": "The Earful app answered {status}."
+  },
+  "optionsConnected": {
+    "message": "Connected. {count} voices."
+  },
+  "optionsCannotReach": {
+    "message": "Cannot reach the Earful app. Is it open?"
+  },
+  "optionsNeedPermission": {
+    "message": "Chrome needs permission to reach that address."
+  }
+}
