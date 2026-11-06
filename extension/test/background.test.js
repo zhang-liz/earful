@@ -218,13 +218,13 @@ test("a server that cannot be reached is reported, not thrown", async () => {
 });
 
 /** A page's player connecting to the worker, as remote-audio.js does. */
-function connect(state) {
+function connect(state, name = "earful-audio") {
   const port = {
     posted: [],
     postMessage(m) { this.posted.push(m); },
     onMessage: { addListener(fn) { port.send = fn; } },
     onDisconnect: { addListener(fn) { port.close = fn; } },
-    name: "earful-audio",
+    name,
   };
   state.listeners.connect(port);
   return port;
@@ -271,6 +271,21 @@ test("closing the page stops its audio", async () => {
   port.close();
   await settle();
   assert.deepStrictEqual(state.toOffscreen.at(-1).op, "gone");
+});
+
+test("a player that connects again after a worker restart keeps its audio", async () => {
+  const { state } = load();
+  const id = "ab".repeat(16);
+  const old = connect(state, `earful-audio:${id}`);
+  old.send({ op: "src", gen: 1, src: "a.wav" });
+  await settle();
+  const again = connect(state, `earful-audio:${id}`);
+  old.close();
+  await settle();
+  assert.ok(state.toOffscreen.every((m) => m.op !== "gone"), "the audio should not be stopped");
+  assert.strictEqual(state.toOffscreen[0].owner, id);
+  state.listeners.message({ type: "audio-event", owner: id, event: "ended" }, {}, () => {});
+  assert.strictEqual(again.posted.length, 1, "news should reach the new connection");
 });
 
 /** A Claude artifact: a top page with a title bar, the text in a frame. */
