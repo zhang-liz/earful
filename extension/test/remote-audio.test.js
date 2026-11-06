@@ -8,14 +8,16 @@ const vm = require("node:vm");
 
 /** Load remote-audio.js with a fake port to the background worker. */
 function load() {
-  const state = { sent: [], onMessage: null, onDisconnect: null, now: 0 };
+  const state = { sent: [], onMessage: null, onDisconnect: null, now: 0, names: [] };
   const port = {
     postMessage: (m) => state.sent.push(m),
     onMessage: { addListener: (fn) => { state.onMessage = fn; } },
     onDisconnect: { addListener: (fn) => { state.onDisconnect = fn; } },
   };
   const context = {
-    chrome: { runtime: { connect: () => port } },
+    chrome: { runtime: { connect: ({ name }) => { state.names.push(name); return port; } } },
+    crypto: require("node:crypto").webcrypto,
+    Uint8Array, Array,
     performance: { now: () => state.now },
     Error, Promise, Number, Map, Boolean,
   };
@@ -127,4 +129,23 @@ test("the sound being taken by another tab is passed on, as paused", () => {
   assert.strictEqual(heard, 1);
   assert.strictEqual(audio.paused, true);
   assert.strictEqual(audio.currentTime, 4);
+});
+
+test("a playing player connects again at once when the worker restarts, as itself", () => {
+  const { audio, state, report } = load();
+  audio.src = "a.wav";
+  audio.play().catch(() => {});
+  report("playing");
+  state.onDisconnect();
+  assert.strictEqual(state.names.length, 2, "it should connect again");
+  assert.strictEqual(state.names[0], state.names[1], "with the same id");
+  assert.match(state.names[0], /^earful-audio:[0-9a-f]{32}$/);
+});
+
+test("a paused player waits for its next call to connect again", () => {
+  const { audio, state, report } = load();
+  audio.src = "a.wav";
+  report("pause", { paused: true });
+  state.onDisconnect();
+  assert.strictEqual(state.names.length, 1);
 });

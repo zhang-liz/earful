@@ -218,9 +218,11 @@ function ensureOffscreen() {
 const readers = new Map();   // owner id -> the port to that page's player
 
 chrome.runtime.onConnect.addListener((port) => {
-  if (port.name !== "earful-audio") return;
-  // Random, so ids from before a worker restart never point at a new page.
-  const owner = crypto.randomUUID();
+  const named = /^earful-audio(?::([0-9a-f]{32}))?$/.exec(port.name);
+  if (!named) return;
+  // The player's own random id, so a player that connects again after a
+  // worker restart still owns the audio playing for it.
+  const owner = named[1] || crypto.randomUUID();
   readers.set(owner, port);
 
   // One at a time and in order: "play" must not overtake the "src" before it.
@@ -246,6 +248,7 @@ chrome.runtime.onConnect.addListener((port) => {
 
   // The page was closed or left: stop its reading rather than talk to no one.
   port.onDisconnect.addListener(() => {
+    if (readers.get(owner) !== port) return;   // it has connected again
     readers.delete(owner);
     chrome.runtime.sendMessage({ to: "offscreen", op: "gone", owner }).catch(() => {});
   });

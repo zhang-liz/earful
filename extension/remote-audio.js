@@ -40,11 +40,15 @@
       this.ended = false;
       this.readyState = 0;
       this.preservesPitch = true;   // the real element always keeps pitch
+      // Who this player is to the worker. Kept across worker restarts, so the
+      // audio still playing in the hidden page stays this player's.
+      const bytes = crypto.getRandomValues(new Uint8Array(16));
+      this.id = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
     }
 
     connect() {
       if (this.port) return this.port;
-      const port = chrome.runtime.connect({ name: "earful-audio" });
+      const port = chrome.runtime.connect({ name: `earful-audio:${this.id}` });
       port.onMessage.addListener((message) => this.heard(message));
       port.onDisconnect.addListener(() => {
         if (this.port !== port) return;
@@ -52,6 +56,11 @@
         this.running = false;
         // Not an AbortError: the reader ignores those, and would wait forever.
         this.settleCalls(named("EarfulDisconnected"));
+        // Chrome stopped the worker while the sound plays on. Connect again at
+        // once, or news such as "ended" has nowhere to go and the reading stops.
+        if (!this.paused) {
+          try { this.connect(); } catch { /* the extension was reloaded */ }
+        }
       });
       this.port = port;
       return port;
