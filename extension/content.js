@@ -288,35 +288,43 @@
     else CSS.highlights.delete("read-it-to-me-part");
   }
 
-  const clean = (s) => s.toLowerCase().replace(/[^a-z0-9']/g, "");
+  // Letters and digits only, in any script, for matching text that was
+  // spaced or punctuated differently.
+  const clean = (s) => s.toLowerCase().replace(/[^\p{L}\p{N}']/gu, "");
 
-  // Kokoro emits a token per word and per punctuation mark; the page has its
-  // own spacing. Match them by letters only, walking both in order.
-  function alignToPage(partStart, partText, words) {
-    const spans = [];
+  // <placeWords> This function is the same in app/index.html and
+  // extension/content.js; a test fails if the two copies differ.
+  // Find each spoken word in the text, in order, by its letters and digits in
+  // any script. Spoken words may be split differently from the page's words,
+  // and some are not in the text as written (a number read out in words), so
+  // each is looked for only a short way ahead and skipped if not found.
+  function placeWords(text, words) {
+    const letters = (s) => s.toLowerCase().replace(/[^\p{L}\p{N}']/gu, "");
+    const placed = [];
     let cursor = 0;
-    let w = 0;
-    while (w < words.length) {
-      const target = clean(words[w].t);
-      if (!target) { w++; continue; }
-      // Find this word in the part's text, from where we left off.
-      let found = -1;
-      for (let i = cursor; i <= partText.length - 1; i++) {
-        if (clean(partText[i]) !== target[0]) continue;
+    for (const word of words) {
+      const target = letters(word.t);
+      if (!target) continue;
+      const limit = Math.min(text.length, cursor + 60 + target.length * 4);
+      for (let i = cursor; i < limit; i++) {
+        if (letters(text[i]) !== target[0]) continue;
         let built = "";
         let j = i;
-        while (j < partText.length && built.length < target.length) {
-          built += clean(partText[j]);
-          j++;
+        while (j < text.length && built.length < target.length) built += letters(text[j++]);
+        if (built === target) {
+          placed.push({ start: i, end: j, s: word.s, e: word.e });
+          cursor = j;
+          break;
         }
-        if (built === target) { found = i; cursor = j; break; }
       }
-      spans.push(found >= 0
-        ? { start: partStart + found, end: partStart + cursor, s: words[w].s, e: words[w].e }
-        : null);
-      w++;
     }
-    return spans.filter(Boolean);
+    return placed;
+  }
+  // </placeWords>
+
+  // The spoken words of one part, as ranges of the page text.
+  function alignToPage(partStart, partText, words) {
+    return placeWords(partText, words).map((w) => ({ ...w, start: partStart + w.start, end: partStart + w.end }));
   }
 
   async function loadTimings(i) {
