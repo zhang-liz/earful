@@ -314,7 +314,16 @@
       setStatus();
       return;
     }
-    if (i >= ready) { waiting = true; index = i; setStatus(); return; }
+    if (i >= ready) {
+      // Silence the part being left. Played on, it would end and move past
+      // the part being waited for.
+      player.pause();
+      clearHighlight();
+      waiting = true;
+      index = i;
+      setStatus();
+      return;
+    }
 
     waiting = false;
     index = i;
@@ -411,7 +420,7 @@
 
   player.addEventListener("ended", () => {
     clearHighlight();
-    if (playing) playChunk(index + 1);
+    if (playing && !waiting) playChunk(index + 1);
   });
 
   function toggle() {

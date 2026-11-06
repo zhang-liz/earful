@@ -178,12 +178,17 @@ class Session {
     const wanted = Math.max(0, Math.min(index, this.job.total - 1));
     if (wanted >= this.ready) {
       // Not written yet. Hold, and the next progress tick will start it.
+      // Silence the part being left: played on, it would end and move past
+      // the part being waited for.
+      this.player.post({ type: "pause" });
+      this.onHighlight(null);
       this.index = wanted;
       this.waiting = true;
       this.status();
       return;
     }
     this.index = wanted;
+    this.loaded = wanted;      // the part the player holds
     this.waiting = false;
     this.finished = false;
     this.lit = -1;
@@ -305,7 +310,7 @@ class Session {
   }
 
   ended() {
-    if (!this.job) return;
+    if (!this.job || this.waiting) return;
     if (this.index + 1 < this.job.total) { this.playPart(this.index + 1); return; }
     // The last part finished. The audio element is sitting at its end, so a
     // bare play would only repeat that part; remember to start over instead.
@@ -319,6 +324,9 @@ class Session {
     if (!this.job) return;
     if (this.playing) { this.player.post({ type: "pause" }); return; }
     if (this.finished) { this.finished = false; this.playPart(0); return; }
+    // After a skip ahead to a part not written yet, the player still holds
+    // the part before it. Go to the part asked for, not back to that one.
+    if (this.loaded !== this.index) { this.playPart(this.index); return; }
     this.player.post({ type: "play" });
   }
 

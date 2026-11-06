@@ -170,3 +170,44 @@ test("reading a real file twice in a row gives the same parts",
   assert.deepStrictEqual(b.session.job.texts, first, "the same text should split the same way");
   b.session.stop();
 });
+
+/** A session part way into a reading with only the first part written. */
+function waitingOnPart2() {
+  const built = build();
+  const { session } = built;
+  session.job = { id: "j", total: 3, texts: ["One.", "Two.", "Three."] };
+  session.parts = [];
+  session.ready = 1;
+  session.playPart(0);
+  session.setPlaying(true);
+  session.next();                       // part 2 is not written yet
+  return built;
+}
+
+test("skipping to a part not written yet silences the part left behind", () => {
+  const { session, player } = waitingOnPart2();
+  assert.strictEqual(session.waiting, true);
+  const lastLoad = player.sent.lastIndexOf(player.last("load"));
+  const lastPause = player.sent.lastIndexOf(player.last("pause"));
+  assert.ok(lastPause > lastLoad, "part 1 must be paused after the skip");
+  session.stop();
+});
+
+test("the old part ending during a wait does not skip the part waited for", () => {
+  const { session, player } = waitingOnPart2();
+  session.ended();                       // part 1's end, already on its way
+  assert.strictEqual(session.index, 1);
+  session.progress({ done: 3, state: "running" });
+  assert.match(player.last("load").url, /\/chunk\/j\/1\.wav$/);
+  session.stop();
+});
+
+test("play during a wait goes to the part waited for, not back", () => {
+  const { session, player } = waitingOnPart2();
+  session.setPlaying(false);             // the pause took effect
+  session.toggle();
+  assert.strictEqual(player.last("play"), null, "must not resume part 1");
+  session.progress({ done: 3, state: "running" });
+  assert.match(player.last("load").url, /\/chunk\/j\/1\.wav$/);
+  session.stop();
+});
