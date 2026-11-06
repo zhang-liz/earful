@@ -1,0 +1,11 @@
+name: Idea · 建议
+description: Something Earful could do better. · Earful 可以做得更好的地方。
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help you? · 什么对你有帮助？
+      description: Tell us what you were doing when you wanted this. · 说说你在做什么的时候想要这个功能。
+    validations:
+      required: true
