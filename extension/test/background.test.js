@@ -30,6 +30,8 @@ function load(options = {}) {
       onInstalled: { addListener: (fn) => { state.listeners.installed = fn; } },
       onMessage: { addListener: (fn) => { (state.listeners.messages ||= []).push(fn); } },
       onConnect: { addListener: (fn) => { state.listeners.connect = fn; } },
+      onStartup: { addListener: (fn) => { state.listeners.startup = fn; } },
+      getURL: (file) => `chrome-extension://earful/${file}`,
       openOptionsPage: () => { state.optionsOpened = (state.optionsOpened || 0) + 1; },
       sendMessage: async (message) => {
         state.toOffscreen.push(message);
@@ -42,11 +44,19 @@ function load(options = {}) {
     },
     contextMenus: {
       create: (m) => state.menus.push(m),
+      update: (id, change) => { state.menus.find((m) => m.id === id).title = change.title; },
       onClicked: { addListener: (fn) => { state.listeners.menuClick = fn; } },
     },
     commands: { onCommand: { addListener: (fn) => { state.listeners.command = fn; } } },
-    action: { onClicked: { addListener: (fn) => { state.listeners.iconClick = fn; } } },
-    storage: { sync: { get: async () => state.stored } },
+    action: {
+      onClicked: { addListener: (fn) => { state.listeners.iconClick = fn; } },
+      setTitle: ({ title }) => { state.actionTitle = title; },
+    },
+    i18n: { getUILanguage: () => options.browserLanguage || "en-US" },
+    storage: {
+      sync: { get: async () => state.stored },
+      onChanged: { addListener: (fn) => { state.listeners.storageChanged = fn; } },
+    },
     tabs: {
       sendMessage: async (tabId, message, opts = {}) => {
         if (!state.hasScript) throw new Error("no receiver");
@@ -73,8 +83,18 @@ function load(options = {}) {
     },
   };
 
-  const context = { chrome, btoa, crypto, setTimeout, fetch: options.fetch, console: { warn: (...a) => state.warnings.push(a.join(" ")), log: console.log } };
+  // The extension's own files, as Chrome serves them to the worker.
+  const fetchFile = async (url, init) => {
+    const own = /^chrome-extension:\/\/earful\/(.+)$/.exec(String(url));
+    if (!own) return options.fetch(url, init);
+    const body = fs.readFileSync(path.join(__dirname, "..", own[1]), "utf8");
+    return { ok: true, status: 200, json: async () => JSON.parse(body) };
+  };
+  const context = { chrome, btoa, crypto, setTimeout, fetch: fetchFile, console: { warn: (...a) => state.warnings.push(a.join(" ")), log: console.log } };
   context.globalThis = context;
+  context.importScripts = (...files) => {
+    for (const file of files) vm.runInContext(fs.readFileSync(path.join(__dirname, "..", file), "utf8"), context);
+  };
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8"), context);
   return { state, chrome };
@@ -82,9 +102,9 @@ function load(options = {}) {
 
 const settle = (ms = 260) => new Promise((r) => setTimeout(r, ms));
 
-test("installing adds both right-click entries", () => {
+test("installing adds both right-click entries", async () => {
   const { state } = load();
-  state.listeners.installed();
+  await state.listeners.installed();
   const ids = state.menus.map((m) => m.id);
   assert.ok(ids.includes("read-selection"), "should offer to read a selection");
   assert.ok(ids.includes("read-page"), "should offer to read the page");

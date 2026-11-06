@@ -1,0 +1,182 @@
+{
+  "extDescription": {
+    "message": "用自然的声音朗读任何网页，声音由你电脑上的 Earful 应用生成。"
+  },
+  "actionTitle": {
+    "message": "Earful：朗读这个页面（Alt+R）"
+  },
+  "cmdRead": {
+    "message": "朗读页面或选中的文字。再按一次暂停。"
+  },
+  "cmdBack": {
+    "message": "回到上一段"
+  },
+  "cmdForward": {
+    "message": "跳到下一段"
+  },
+  "menuReadSelection": {
+    "message": "朗读选中的文字"
+  },
+  "menuReadPage": {
+    "message": "朗读整个页面"
+  },
+  "playerDrag": {
+    "message": "拖动来移动"
+  },
+  "playerPlay": {
+    "message": "播放或暂停（Alt+R）"
+  },
+  "playerPrev": {
+    "message": "上一段（Alt+,）"
+  },
+  "playerNext": {
+    "message": "下一段（Alt+.）"
+  },
+  "playerSlower": {
+    "message": "慢一点"
+  },
+  "playerNormal": {
+    "message": "恢复正常速度"
+  },
+  "playerFaster": {
+    "message": "快一点"
+  },
+  "playerHint": {
+    "message": "点击页面上任意一句，就从那里开始读"
+  },
+  "playerSettings": {
+    "message": "声音和设置"
+  },
+  "playerSmaller": {
+    "message": "缩小"
+  },
+  "playerBigger": {
+    "message": "放大"
+  },
+  "playerClose": {
+    "message": "停止并关闭"
+  },
+  "statusClickToStart": {
+    "message": "点这里开始"
+  },
+  "statusBuffering": {
+    "message": "正在缓冲……"
+  },
+  "statusPart": {
+    "message": "第 {index} / {total} 段"
+  },
+  "statusFinished": {
+    "message": "读完了"
+  },
+  "statusPaused": {
+    "message": "已暂停"
+  },
+  "statusPreparing": {
+    "message": "正在准备…… {ready}/{total}"
+  },
+  "statusGettingReady": {
+    "message": "正在准备……"
+  },
+  "statusLostServer": {
+    "message": "和 {server} 上的 Earful 应用断开了。"
+  },
+  "statusFailed": {
+    "message": "出错了，请再试一次。"
+  },
+  "statusCannotReach": {
+    "message": "连不上 {server}。Earful 应用打开了吗？"
+  },
+  "statusRefused": {
+    "message": "Earful 应用拒绝了这个请求。"
+  },
+  "statusSelectFirst": {
+    "message": "请先选中一些文字。"
+  },
+  "statusNothing": {
+    "message": "这个页面上没有找到可以读的内容。"
+  },
+  "error_no_text": {
+    "message": "没有可以读的文字。"
+  },
+  "error_unknown_job": {
+    "message": "这次朗读已经不在了，请重新开始。"
+  },
+  "error_not_ready": {
+    "message": "这一段还没准备好。"
+  },
+  "error_still_reading": {
+    "message": "还在朗读中，请等它读完。"
+  },
+  "error_bad_range": {
+    "message": "找不到这部分朗读内容。"
+  },
+  "error_unknown_voice": {
+    "message": "这个声音用不了，请在设置里换一个。"
+  },
+  "error_unknown_language": {
+    "message": "Earful 应用不能读这种语言。"
+  },
+  "error_voice_unavailable": {
+    "message": "这个声音还在下载，请稍后再试。"
+  },
+  "languageSwitch": {
+    "message": "English"
+  },
+  "languageLabel": {
+    "message": "切换扩展程序的显示语言"
+  },
+  "optionsTitle": {
+    "message": "EARFUL 设置"
+  },
+  "optionsHowTo": {
+    "message": "要朗读页面，点击 Earful 图标或按 Alt+R。先选中文字，就只读选中的部分。"
+  },
+  "optionsVoice": {
+    "message": "声音"
+  },
+  "optionsVoiceEn": {
+    "message": "英文声音"
+  },
+  "optionsVoiceZh": {
+    "message": "中文声音"
+  },
+  "optionsReadLang": {
+    "message": "朗读语言"
+  },
+  "readLangAuto": {
+    "message": "自动（按文字判断）"
+  },
+  "readLangZh": {
+    "message": "中文"
+  },
+  "readLangEn": {
+    "message": "英文"
+  },
+  "optionsServer": {
+    "message": "Earful 应用地址"
+  },
+  "optionsPassword": {
+    "message": "密码（设置过才需要填）"
+  },
+  "optionsSave": {
+    "message": "保存设置"
+  },
+  "optionsChecking": {
+    "message": "正在检查 Earful 应用……"
+  },
+  "optionsWrongPassword": {
+    "message": "密码不对。"
+  },
+  "optionsServerSaid": {
+    "message": "Earful 应用返回了 {status}。"
+  },
+  "optionsConnected": {
+    "message": "已连接，共 {count} 个声音。"
+  },
+  "optionsCannotReach": {
+    "message": "连不上 Earful 应用。它打开了吗？"
+  },
+  "optionsNeedPermission": {
+    "message": "Chrome 需要权限才能访问这个地址。"
+  }
+}

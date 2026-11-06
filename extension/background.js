@@ -1,23 +1,55 @@
 // Wires the right-click menu, the toolbar button and the keyboard shortcut
 // to the content script that does the reading.
 
-const DEFAULTS = { server: "http://127.0.0.1:8888", password: "", voice: "af_heart", speed: 1 };
+/* global importScripts, EarfulStrings */
+importScripts("strings.js");
 
+// voice is the English pick (older versions had only one); voiceZh the
+// Mandarin one. readLanguage forces one reading language; "" means decide
+// from the text. language is the extension's own language; "" means the
+// browser's.
+const DEFAULTS = {
+  server: "http://127.0.0.1:8888", password: "", voice: "af_heart", voiceZh: "",
+  readLanguage: "", language: "", speed: 1,
+};
+
+/** The saved settings, with the words to show in the reader's language. */
 async function settings() {
-  return { ...DEFAULTS, ...(await chrome.storage.sync.get(Object.keys(DEFAULTS))) };
+  const saved = { ...DEFAULTS, ...(await chrome.storage.sync.get(Object.keys(DEFAULTS))) };
+  const lang = EarfulStrings.pick(saved.language, chrome.i18n?.getUILanguage?.());
+  let strings = {};
+  try { strings = await EarfulStrings.table(lang); } catch (error) { console.warn("Earful:", error); }
+  return { ...saved, lang, strings };
 }
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: "read-selection",
-    title: "Read this aloud",
-    contexts: ["selection"],
-  });
-  chrome.contextMenus.create({
-    id: "read-page",
-    title: "Read the whole page",
-    contexts: ["page"],
-  });
+const MENUS = [
+  { id: "read-selection", word: "menuReadSelection", contexts: ["selection"] },
+  { id: "read-page", word: "menuReadPage", contexts: ["page"] },
+];
+
+chrome.runtime.onInstalled.addListener(async () => {
+  const { strings } = await settings();
+  for (const { id, word, contexts } of MENUS) {
+    chrome.contextMenus.create({ id, contexts, title: EarfulStrings.fill(strings, word) });
+  }
+  showLanguage(strings);
+});
+
+/** Name the menus and the toolbar button in the reader's language. */
+function showLanguage(strings) {
+  for (const { id, word } of MENUS) {
+    try {
+      chrome.contextMenus.update(id, { title: EarfulStrings.fill(strings, word) }, () => void chrome.runtime.lastError);
+    } catch { /* not made yet; onInstalled names it */ }
+  }
+  chrome.action.setTitle?.({ title: EarfulStrings.fill(strings, "actionTitle") });
+}
+
+// Chrome names the manifest's parts in the browser's language. A reader who
+// picked the other one sees it as soon as the worker starts, and on a switch.
+chrome.runtime.onStartup?.addListener(async () => showLanguage((await settings()).strings));
+chrome.storage.onChanged?.addListener(async (changes) => {
+  if ("language" in changes) showLanguage((await settings()).strings);
 });
 
 // The content script runs in every frame, because some pages keep their text

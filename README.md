@@ -245,6 +245,12 @@ The gear on the player opens the settings: the server address, the voice, and
 the password if you set one. They are also under **Options** when you
 right-click the icon. The defaults match `./run.sh` on the same machine.
 
+The extension shows its words in English or Chinese: the browser's language
+at first, and the button at the top of the settings switches it. The settings
+also pick an English voice and a Mandarin voice, and can force the reading
+language. Every word is in `extension/_locales/<language>/messages.json`; add
+a word to both files, or `extension/check-manifest.py` and the tests fail.
+
 The server must be running, because it does the speaking. To point the
 extension at a server on another machine, run `./run.sh --lan`, set
 `TTS_PASSWORD`, and put that address and password in the extension's settings.
