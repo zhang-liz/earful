@@ -489,16 +489,24 @@ function setSpeed(value) {
 /* ---------- the article ---------- */
 // One span per word, so a single word can be lit while it is spoken.
 // Whitespace between words is kept as plain text to preserve wrapping.
+// Chinese has no spaces, so the browser's word finder splits it into words.
+const HAN = /[\u3400-\u9fff\uf900-\ufaff]/;
+const wordFinder = typeof Intl !== "undefined" && Intl.Segmenter
+  ? new Intl.Segmenter("zh", { granularity: "word" }) : null;
 function fillWords(part, body) {
   part.textContent = "";
   for (const piece of body.split(/(\s+)/)) {
     if (!piece) continue;
     if (/^\s+$/.test(piece)) {
       part.append(piece);
-    } else {
+      continue;
+    }
+    const words = wordFinder && HAN.test(piece)
+      ? [...wordFinder.segment(piece)].map((s) => s.segment) : [piece];
+    for (const text of words) {
       const word = document.createElement("span");
       word.className = "w";
-      word.textContent = piece;
+      word.textContent = text;
       part.append(word);
     }
   }
@@ -691,31 +699,58 @@ async function loadTimings(i) {
   } catch { return null; }
 }
 
-// Kokoro emits a token per word AND per punctuation mark, while the reader
-// makes a span per whitespace-separated word. Map one to the other by walking
-// both in order and matching on letters only.
-function alignWords(spans, words) {
-  const clean = (s) => s.toLowerCase().replace(/[^a-z0-9']/g, "");
-  const map = new Array(spans.length).fill(null);
-  let w = 0;
-  for (let s = 0; s < spans.length; s++) {
-    const target = clean(spans[s].textContent);
+// <placeWords> This function is the same in app/index.html and
+// extension/content.js; a test fails if the two copies differ.
+// Find each spoken word in the text, in order, by its letters and digits in
+// any script. Spoken words may be split differently from the page's words,
+// and some are not in the text as written (a number read out in words), so
+// each is looked for only a short way ahead and skipped if not found.
+function placeWords(text, words) {
+  const letters = (s) => s.toLowerCase().replace(/[^\p{L}\p{N}']/gu, "");
+  const placed = [];
+  let cursor = 0;
+  for (const word of words) {
+    const target = letters(word.t);
     if (!target) continue;
-    let built = "";
-    const startWord = w;
-    while (w < words.length) {
-      built += clean(words[w].t);
-      w++;
-      if (built === target) {                       // one or more tokens = one span
-        map[s] = { start: words[startWord].s, end: words[w - 1].e };
-        break;
-      }
-      if (built.length > target.length) {           // drifted; resync
-        w = startWord + 1;
+    const limit = Math.min(text.length, cursor + 60 + target.length * 4);
+    for (let i = cursor; i < limit; i++) {
+      if (letters(text[i]) !== target[0]) continue;
+      let built = "";
+      let j = i;
+      while (j < text.length && built.length < target.length) built += letters(text[j++]);
+      if (built === target) {
+        placed.push({ start: i, end: j, s: word.s, e: word.e });
+        cursor = j;
         break;
       }
     }
   }
+  return placed;
+}
+// </placeWords>
+
+// Give each word span on screen the time of the spoken words inside it. A
+// spoken word that covers two spans, as Chinese words may, lights both.
+function alignWords(spans, words) {
+  const map = new Array(spans.length).fill(null);
+  const part = spans[0]?.parentElement;
+  if (!part) return map;
+  let text = "";
+  const at = new Map();
+  for (const node of part.childNodes) {
+    const t = node.textContent;
+    if (node.nodeType === 1 && node.classList.contains("w")) at.set(node, [text.length, text.length + t.length]);
+    text += t;
+  }
+  const placed = placeWords(text, words);
+  let p = 0;
+  spans.forEach((span, s) => {
+    const [from, to] = at.get(span) || [0, 0];
+    while (p < placed.length && placed[p].end <= from) p++;
+    for (let q = p; q < placed.length && placed[q].start < to; q++) {
+      map[s] = map[s] ? { start: map[s].start, end: placed[q].e } : { start: placed[q].s, end: placed[q].e };
+    }
+  });
   return map;
 }
 
