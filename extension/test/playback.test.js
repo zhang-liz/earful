@@ -18,13 +18,15 @@ const TEXTS = [
   "On the fourth Tuesday a boat appeared where none should have been.",
 ];
 
-function server({ ready = TEXTS.length, texts = TEXTS } = {}) {
+function server({ ready: first = TEXTS.length, texts = TEXTS, live } = {}) {
   const sent = [];
   const fetch = async (url, options = {}) => {
     sent.push({ url, options });
     const reply = (body, ok = true) => ({ ok, status: ok ? 200 : 404, json: async () => body });
     if (url.endsWith("/speak")) return reply({ id: "job1", total: texts.length, texts });
     if (url.includes("/progress-once/") || url.includes("/progress/")) {
+      // `live.ready` lets a test write more parts as it goes.
+      const ready = live ? live.ready : first;
       return reply({ id: "job1", state: ready >= texts.length ? "ready" : "running",
                      done: ready, total: texts.length, error: "" });
     }
@@ -253,4 +255,24 @@ test("skipping fast does not ask for a click", async () => {
   h.button("next").click();
   await settle();
   assert.doesNotMatch(h.status(), /Click here to start/);
+});
+
+test("skipping to a part not written yet silences the part left behind", async () => {
+  const { h } = await reading({ ready: 1 });
+  h.button("next").click();
+  await settle();
+  assert.match(h.status(), /Buffering/);
+  assert.strictEqual(h.state.audio.paused, true, "part 1 must not play on under the wait");
+});
+
+test("the old part ending during a wait does not skip the part waited for", async () => {
+  const live = { ready: 1 };
+  const { h } = await reading({ ready: 1, live });
+  h.button("next").click();
+  await settle();
+  h.state.audio.dispatchEvent({ type: "ended" });   // already on its way
+  await settle();
+  live.ready = 4;                                    // the rest arrives
+  await settle(1500);
+  assert.match(h.state.audio.src, /\/1\.wav$/, "part 2 should play, not part 3");
 });
