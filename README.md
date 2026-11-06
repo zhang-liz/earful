@@ -30,6 +30,27 @@ It serves this Mac only. With Tailscale signed in, the phone address still
 works. Server output goes to `~/Library/Logs/Earful.log`. Run the build again
 if you move this folder.
 
+### A Mac app for someone else
+
+```sh
+./mac/build-app.sh --bundle       # dist/Earful.app, about 1.9 GB
+./mac/check-app.sh dist/Earful.app
+./mac/make-dmg.sh dist/Earful.app dist/Earful.dmg   # about 910 MB
+```
+
+This app needs nothing else installed and no internet, ever: Python, the code,
+both models and every voice are inside it. That matters where Hugging Face
+cannot be reached, such as mainland China. It needs a Mac with Apple silicon.
+
+`check-app.sh` runs it the way a new user's Mac would: no internet, an empty
+home folder, the app read-only, from a long hidden folder. It must read English
+and Chinese. The disk image holds the app, a link to Applications, and
+`如何打开 How to open.txt`: the app is not registered with Apple, so macOS
+blocks it the first time, and the note says how to open it anyway.
+
+The **Mac app** workflow builds, checks and packs it on GitHub for a `v*` tag
+or by hand, and attaches the disk image to a draft release.
+
 ## Use it from your phone
 
 Same Wi-Fi as the Mac:

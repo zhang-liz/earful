@@ -1,16 +1,25 @@
 #!/usr/bin/env bash
-# Build Earful.app and put it in /Applications.
+# Build Earful.app.
 #
-#   ./mac/build-app.sh            build and install
+#   ./mac/build-app.sh            an app that runs this clone; put in /Applications
 #   APP_DIR=~/Applications ./mac/build-app.sh
+#   ./mac/build-app.sh --bundle   a self-contained app for anyone, in dist/:
+#                                 Python, the code and the voices inside, no
+#                                 internet needed (about 1.5 GB)
 #
-# Run it again after moving this folder: the app remembers where it lives.
+# Run it again after moving this folder: the clone's app remembers where it lives.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+BUNDLE=""
+[[ "${1:-}" == "--bundle" ]] && BUNDLE=1
 REPO="$(pwd)"
 UV="$(command -v uv)" || { echo "uv not found. Install it first." >&2; exit 1; }
-APP_DIR="${APP_DIR:-/Applications}"
+if [[ -n "$BUNDLE" ]]; then
+  APP_DIR="${APP_DIR:-$REPO/dist}"
+else
+  APP_DIR="${APP_DIR:-/Applications}"
+fi
 APP="$APP_DIR/Earful.app"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -33,11 +42,19 @@ cp "$WORK/Earful.icns" "$RES/applet.icns"
 rm -f "$RES/Assets.car"
 sed -e "s|__REPO__|$REPO|" -e "s|__TOOLS_PATH__|$(dirname "$UV")|" mac/earful.sh >"$RES/earful.sh"
 chmod +x "$RES/earful.sh"
+[[ -n "$BUNDLE" ]] && mac/bundle.sh "$RES"
 
 PLIST="$WORK/Earful.app/Contents/Info.plist"
 plutil -replace CFBundleIdentifier -string "local.earful" "$PLIST"
 plutil -replace CFBundleName -string "Earful" "$PLIST"
 plutil -remove CFBundleIconName "$PLIST" 2>/dev/null || true
+if [[ -n "$BUNDLE" ]]; then
+  VERSION="${VERSION:-$(git describe --tags --exact-match 2>/dev/null || echo 0.0.0)}"
+  plutil -replace CFBundleShortVersionString -string "${VERSION#v}" "$PLIST"
+  # The bundled Python and packages are built for Apple silicon only.
+  plutil -replace LSArchitecturePriority -json '["arm64"]' "$PLIST"
+  plutil -replace LSMinimumSystemVersion -string "13.0" "$PLIST"
+fi
 
 # Changing the bundle breaks osacompile's signature, so sign it again.
 codesign --force --deep --sign - "$WORK/Earful.app"
