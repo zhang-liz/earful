@@ -394,6 +394,14 @@
 
   <!-- ================= middle: the article ================= -->
   <main class="main">
+    <div class="box hidden" id="copiedBox">
+      <p class="legend">// EARFUL CANNOT SEE THAT PAGE'S TEXT</p>
+      <p class="hint">GO BACK TO THE PAGE. CLICK IN THE TEXT. PRESS CMD+A, THEN CMD+C. THEN COME BACK AND PRESS THIS BUTTON.</p>
+      <div style="height:10px"></div>
+      <button id="readCopied" class="primary">&#9654; READ WHAT I COPIED</button>
+      <p class="err hidden" id="copiedError"></p>
+    </div>
+
     <div class="box" id="inputBox">
       <p class="legend">// YOUR TEXT</p>
       <textarea id="text" placeholder="Paste an article, a chapter, notes - any length."></textarea>
@@ -1403,8 +1411,7 @@ function grabPage(origin, key) {
     }
     text = parts.join("\n\n") || readable(root);
   }
-  if (!text) { window.alert("Earful found no text on this page."); return; }
-  window.open(origin + "/#read=" + key + "." + encodeURIComponent(text), "earful");
+  window.open(origin + (text ? "/#read=" + key + "." + encodeURIComponent(text) : "/#copied=" + key), "earful");
 }
 
 function setUpBookmark() {
@@ -1421,29 +1428,66 @@ function setUpBookmark() {
   $("bookmarkBox").classList.remove("hidden");
 }
 
-/** Start reading text the bookmark sent. False when there was none. */
-function readFromLink() {
-  const match = /^#read=([0-9a-f]+)\.(.*)$/s.exec(location.hash);
-  if (!match) return false;
-  // Clear the address, so a refresh does not start the reading again.
-  history.replaceState(null, "", location.pathname + location.search);
-  if (match[1] !== linkKey()) return false;
-  let linked;
-  try { linked = decodeURIComponent(match[2]).trim(); } catch { return false; }
-  if (!linked) return false;
-
+/** Throw away what was on screen and read `body` instead. */
+function readNow(body) {
+  $("copiedBox").classList.add("hidden");
   closeEditor();
-  text.value = linked;
+  text.value = body;
   refreshCount();
   rememberText();
   speak();
+}
+
+/**
+ * Start reading text the bookmark sent. False when there was none.
+ *
+ * Some pages, a Claude artifact among them, keep their text in a frame from
+ * another website, which the bookmark is not allowed to read. It then sends
+ * "#copied" instead, and this page asks for the text to be copied over.
+ */
+function readFromLink() {
+  const match = /^#(read|copied)=([0-9a-f]+)(?:\.(.*))?$/s.exec(location.hash);
+  if (!match) return false;
+  // Clear the address, so a refresh does not start the reading again.
+  history.replaceState(null, "", location.pathname + location.search);
+  if (match[2] !== linkKey()) return false;
+  if (match[1] === "copied") {
+    $("copiedError").classList.add("hidden");
+    $("copiedBox").classList.remove("hidden");
+    return false;
+  }
+  let linked;
+  try { linked = decodeURIComponent(match[3] || "").trim(); } catch { return false; }
+  if (!linked) return false;
+  readNow(linked);
   return true;
+}
+
+/** The button for a page the bookmark could not read: read the clipboard. */
+async function readCopied() {
+  const problem = (message) => {
+    $("copiedError").textContent = message;
+    $("copiedError").classList.remove("hidden");
+  };
+  let copied;
+  try {
+    copied = (await navigator.clipboard.readText()).trim();
+  } catch {
+    // No clipboard on a plain-http address, or Chrome was told to block it.
+    problem("EARFUL WAS NOT ALLOWED TO SEE WHAT YOU COPIED. PASTE IT INTO THE TEXT BOX WITH CMD+V.");
+    $("inputBox").classList.remove("hidden");
+    $("readerBox").classList.add("hidden");
+    return;
+  }
+  if (!copied) { problem("NOTHING IS COPIED YET. COPY THE TEXT FIRST, THEN PRESS THE BUTTON."); return; }
+  readNow(copied);
 }
 
 text.addEventListener("input", refreshCount);
 text.addEventListener("input", rememberText);
 // The bookmark reuses the tab it opened, and then only the # changes.
 window.addEventListener("hashchange", readFromLink);
+$("readCopied").addEventListener("click", readCopied);
 setUpBookmark();
 const fromLink = readFromLink();
 restoreText();
