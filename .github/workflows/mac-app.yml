@@ -28,10 +28,15 @@ jobs:
       - name: Make the disk image
         run: ./mac/make-dmg.sh dist/Earful.app dist/Earful.dmg
 
+      - name: Pack the browser extension
+        run: extension/pack.sh
+
       - uses: actions/upload-artifact@v7
         with:
           name: Earful-mac
-          path: dist/Earful.dmg
+          path: |
+            dist/Earful.dmg
+            dist/earful-extension-*.zip
           retention-days: 14
 
       # A draft: nobody outside sees it until it is published by hand.
@@ -42,4 +47,4 @@ jobs:
         run: |
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
             || gh release create "$GITHUB_REF_NAME" --draft --title "Earful $GITHUB_REF_NAME" --notes ""
-          gh release upload "$GITHUB_REF_NAME" dist/Earful.dmg --clobber
+          gh release upload "$GITHUB_REF_NAME" dist/Earful.dmg dist/earful-extension-*.zip --clobber
