@@ -258,6 +258,13 @@
     padding: 10px; margin: 0; line-height: 1.8;
   }
   .hidden { display: none !important; }
+  .reader-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .reader.editing ~ * #newText, .editor-open #newText { display: none; }
+
+  /* The pixel font has no Chinese letters. The system font draws them, and
+     at the pixel font's 7-9px they are too small to read. */
+  :lang(zh) :is(.tagline, .pick, .legend, label, select, button, .fine span,
+    .stat, .hint, .err, .edit-help, .dragme, .phoneUrl) { font-size: 12px; }
 
   /* ---------- phones ---------- */
   @media (max-width: 820px) {
@@ -435,7 +442,10 @@
       <div class="reader" id="reader"></div>
       <p class="err hidden" id="readerError"></p>
       <div style="height:12px"></div>
-      <button id="edit" data-i18n="reader.edit">&#9998; EDIT TEXT</button>
+      <div class="reader-actions">
+        <button id="edit" data-i18n="reader.edit">&#9998; EDIT TEXT</button>
+        <button id="newText" data-i18n="reader.new">+ NEW TEXT</button>
+      </div>
     </div>
   </main>
 </div>
@@ -1497,6 +1507,29 @@ $("voiceZh").addEventListener("change", changeVoice);
  */
 const SAVED_TEXT = "readItToMe.text";
 
+/**
+ * Put the empty paste box back, to read something else. The old reading
+ * stays saved until the new one starts, so a refresh before then brings it
+ * back.
+ */
+function newText() {
+  closeEditor();
+  stopSample();
+  player.pause();
+  playing = false;
+  waiting = false;
+  $("toggle").innerHTML = "&#9654;";
+  stopHighlight();
+  setStatus();
+  clearError();
+  text.value = "";
+  refreshCount();
+  rememberText();
+  $("readerBox").classList.add("hidden");
+  $("inputBox").classList.remove("hidden");
+  text.focus();
+}
+
 function rememberText() {
   try {
     if (text.value) localStorage.setItem(SAVED_TEXT, text.value);
@@ -1676,6 +1709,7 @@ $("download").addEventListener("click", () => {
   if (job) window.location.href = `/download/${job.id}.wav`;
 });
 $("edit").addEventListener("click", () => openEditor(index));
+$("newText").addEventListener("click", newText);
 
 document.addEventListener("keydown", (event) => {
   // Keys in a text box, slider or menu belong to it, and Cmd+Left and the like

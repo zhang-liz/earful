@@ -221,3 +221,24 @@ test("double-clicking a part does not start audio under the editor", async () =>
   assert.strictEqual(page.status(), "PAUSED");
   await page.close();
 });
+
+test("new text stops the reading and brings back an empty paste box", async () => {
+  const page = await open();
+  await page.read("One.\n\nTwo.");
+  await page.rendered(2, 2);
+  page.$("toggle").click();
+  await page.tick();
+
+  page.$("newText").click();
+  await page.tick();
+  assert.ok(page.$("readerBox").classList.contains("hidden"));
+  assert.ok(!page.$("inputBox").classList.contains("hidden"));
+  assert.strictEqual(page.$("text").value, "");
+  assert.notStrictEqual(page.status(), "PLAYING");
+  assert.strictEqual(page.window.document.activeElement, page.$("text"));
+
+  await page.read("Three.");
+  assert.ok(!page.$("readerBox").classList.contains("hidden"));
+  assert.ok(page.$("inputBox").classList.contains("hidden"));
+  await page.close();
+});
