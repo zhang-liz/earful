@@ -177,6 +177,13 @@ run.sh           starts the server and opens the browser
 output/          generated audio (git-ignored)
 ```
 
+## Read any web page: the bookmark
+
+The easy way. On the Earful page, drag **READ IN EARFUL** from the sidebar to
+your bookmarks bar. On any page, click that bookmark: Earful opens and reads
+the page, or just the text you selected. Works in Chrome, Safari, Arc and
+Brave, with nothing to install.
+
 ## Browser extension
 
 Reads any web page aloud, highlighting each word in the page itself.
