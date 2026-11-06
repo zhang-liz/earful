@@ -16,12 +16,27 @@ function load(options = {}) {
     listeners: {},
     stored: options.stored || {},
     warnings: [],
+    toOffscreen: [],
+    offscreenCreated: [],
+    offscreenOpen: false,
   };
+  // Every message listener, as Chrome calls them all; the first answer wins.
+  state.listeners.message = (message, sender, respond) =>
+    state.listeners.messages.map((fn) => fn(message, sender, respond)).some(Boolean);
 
   const chrome = {
     runtime: {
       onInstalled: { addListener: (fn) => { state.listeners.installed = fn; } },
-      onMessage: { addListener: (fn) => { state.listeners.message = fn; } },
+      onMessage: { addListener: (fn) => { (state.listeners.messages ||= []).push(fn); } },
+      onConnect: { addListener: (fn) => { state.listeners.connect = fn; } },
+      sendMessage: async (message) => {
+        state.toOffscreen.push(message);
+        return options.offscreenReply ? options.offscreenReply(message) : {};
+      },
+    },
+    offscreen: {
+      hasDocument: async () => state.offscreenOpen,
+      createDocument: async (o) => { state.offscreenCreated.push(o); state.offscreenOpen = true; },
     },
     contextMenus: {
       create: (m) => state.menus.push(m),
@@ -46,7 +61,7 @@ function load(options = {}) {
     },
   };
 
-  const context = { chrome, btoa, fetch: options.fetch, console: { warn: (...a) => state.warnings.push(a.join(" ")), log: console.log } };
+  const context = { chrome, btoa, crypto, fetch: options.fetch, console: { warn: (...a) => state.warnings.push(a.join(" ")), log: console.log } };
   context.globalThis = context;
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8"), context);
@@ -202,4 +217,60 @@ test("a server that cannot be reached is reported, not thrown", async () => {
     state.listeners.message({ type: "api", path: "/voices", options: {} }, {}, respond);
   });
   assert.match(answer.failed, /connection refused/);
+});
+
+/** A page's player connecting to the worker, as remote-audio.js does. */
+function connect(state) {
+  const port = {
+    posted: [],
+    postMessage(m) { this.posted.push(m); },
+    onMessage: { addListener(fn) { port.send = fn; } },
+    onDisconnect: { addListener(fn) { port.close = fn; } },
+    name: "earful-audio",
+  };
+  state.listeners.connect(port);
+  return port;
+}
+
+test("audio calls open the hidden page once and go to it in order", async () => {
+  const { state } = load();
+  const port = connect(state);
+  port.send({ op: "src", gen: 1, src: "a.wav" });
+  port.send({ op: "play", gen: 1, call: 1, src: "a.wav" });
+  await settle();
+  assert.strictEqual(state.offscreenCreated.length, 1);
+  assert.deepStrictEqual([...state.offscreenCreated[0].reasons], ["AUDIO_PLAYBACK"]);
+  assert.deepStrictEqual(state.toOffscreen.map((m) => m.op), ["src", "play"]);
+  assert.ok(state.toOffscreen.every((m) => m.to === "offscreen" && m.owner));
+  assert.strictEqual(JSON.stringify(port.posted), JSON.stringify([{ reply: 1 }]));
+});
+
+test("a refused play is passed back to the page", async () => {
+  const { state } = load({ offscreenReply: (m) => (m.op === "play" ? { error: "NotAllowedError" } : {}) });
+  const port = connect(state);
+  port.send({ op: "play", gen: 1, call: 4 });
+  await settle();
+  assert.strictEqual(JSON.stringify(port.posted), JSON.stringify([{ reply: 4, error: "NotAllowedError" }]));
+});
+
+test("the hidden page's events reach only the page that owns the audio", async () => {
+  const { state } = load();
+  const first = connect(state);
+  const second = connect(state);
+  first.send({ op: "src", gen: 1, src: "a.wav" });
+  await settle();
+  const owner = state.toOffscreen[0].owner;
+  state.listeners.message({ type: "audio-event", owner, event: "ended" }, {}, () => {});
+  assert.strictEqual(first.posted.length, 1);
+  assert.strictEqual(second.posted.length, 0);
+});
+
+test("closing the page stops its audio", async () => {
+  const { state } = load();
+  const port = connect(state);
+  port.send({ op: "src", gen: 1, src: "a.wav" });
+  await settle();
+  port.close();
+  await settle();
+  assert.deepStrictEqual(state.toOffscreen.at(-1).op, "gone");
 });

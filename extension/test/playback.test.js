@@ -64,6 +64,13 @@ test("pausing stops the audio and says so", async () => {
   assert.match(h.status(), /Paused/);
 });
 
+test("pausing just after a part starts says paused, not click to start", async () => {
+  const { h } = await reading();
+  await h.send({ type: "toggle", settings: {} });
+  await settle(700);           // past the check for a browser refusing sound
+  assert.match(h.status(), /Paused/);
+});
+
 test("pausing then playing does not reload the part", async () => {
   const { h } = await reading();
   h.state.audio.time = 1;                 // partway through
