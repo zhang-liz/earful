@@ -30,6 +30,7 @@ function load(options = {}) {
       onInstalled: { addListener: (fn) => { state.listeners.installed = fn; } },
       onMessage: { addListener: (fn) => { (state.listeners.messages ||= []).push(fn); } },
       onConnect: { addListener: (fn) => { state.listeners.connect = fn; } },
+      openOptionsPage: () => { state.optionsOpened = (state.optionsOpened || 0) + 1; },
       sendMessage: async (message) => {
         state.toOffscreen.push(message);
         return options.offscreenReply ? options.offscreenReply(message) : {};
@@ -44,6 +45,7 @@ function load(options = {}) {
       onClicked: { addListener: (fn) => { state.listeners.menuClick = fn; } },
     },
     commands: { onCommand: { addListener: (fn) => { state.listeners.command = fn; } } },
+    action: { onClicked: { addListener: (fn) => { state.listeners.iconClick = fn; } } },
     storage: { sync: { get: async () => state.stored } },
     tabs: {
       sendMessage: async (tabId, message, opts = {}) => {
@@ -149,11 +151,11 @@ test("missing settings fall back to the defaults", async () => {
   assert.ok(sent.message.settings.voice, "there should always be a voice");
 });
 
-test("the keyboard shortcut reads the selection", async () => {
+test("the keyboard shortcut reads the page", async () => {
   const { state } = load({ hasScript: true });
-  await state.listeners.command("read-selection", { id: 7 });
+  await state.listeners.command("read-or-pause", { id: 7 });
   await settle();
-  assert.ok(state.sentTo.some((s) => s.message.type === "read-selection"));
+  assert.ok(state.sentTo.some((s) => s.message.type === "read-page"));
 });
 
 test("a menu click with no tab does nothing rather than throwing", async () => {
@@ -163,24 +165,10 @@ test("a menu click with no tab does nothing rather than throwing", async () => {
   assert.strictEqual(state.sentTo.length, 0);
 });
 
-test("the popup's commands are passed on to the page", async () => {
+test("the player's gear opens the settings", () => {
   const { state } = load({ hasScript: true });
-  let replied = null;
-  const async_ = state.listeners.message(
-    { type: "popup-command", command: { type: "stop" } }, null, (r) => { replied = r; }
-  );
-  assert.strictEqual(async_, true, "should keep the channel open to answer");
-  await settle();
-  assert.ok(state.sentTo.some((s) => s.message.type === "stop"));
-  assert.ok(replied, "the popup should get an answer");
-});
-
-test("a popup command with no open tab does not throw", async () => {
-  const { state } = load({ hasScript: true, noTab: true });
-  let replied = null;
-  state.listeners.message({ type: "popup-command", command: { type: "stop" } }, null, (r) => { replied = r; });
-  await settle();
-  assert.ok(replied, "should still answer the popup");
+  state.listeners.message({ type: "open-settings" }, {}, () => {});
+  assert.strictEqual(state.optionsOpened, 1);
 });
 
 test("an unrelated message is left alone", () => {
@@ -316,7 +304,7 @@ test("reading a selection goes to the frame it is in", async () => {
     { frameId: 0, page: 58, selection: 0, seen: true },
     { frameId: 3, page: 9000, selection: 40, seen: true },
   ] });
-  state.listeners.command("read-selection", { id: 7 });
+  state.listeners.command("read-or-pause", { id: 7 });
   await settle();
   assert.strictEqual(state.sentTo.find((s) => s.message.type === "read-selection").frameId, 3);
 });
@@ -328,11 +316,14 @@ test("a right-clicked selection goes to the frame it was clicked in", async () =
   assert.strictEqual(state.sentTo.find((s) => s.message.type === "read").frameId, 3);
 });
 
-test("pause and stop go to every frame, so the one reading hears them", async () => {
-  const { state } = load({ hasScript: true, frames: ARTIFACT });
-  state.listeners.message({ type: "popup-command", command: { type: "stop" } }, null, () => {});
+test("pause goes to every frame, so the one reading hears it", async () => {
+  const { state } = load({ hasScript: true, frames: [
+    { frameId: 0, page: 58, selection: 0, reading: false, seen: true },
+    { frameId: 3, page: 9000, selection: 0, reading: true, seen: true },
+  ] });
+  state.listeners.iconClick({ id: 7 });
   await settle();
-  const sent = state.sentTo.find((s) => s.message.type === "stop");
+  const sent = state.sentTo.find((s) => s.message.type === "toggle");
   assert.strictEqual(sent.frameId, undefined);
 });
 
@@ -343,4 +334,36 @@ test("the script goes into every frame of a tab that lacks it", async () => {
   const injected = state.injected.find((i) => (i.files || []).includes("content.js"));
   assert.strictEqual(injected.target.allFrames, true);
   assert.strictEqual(state.sentTo.find((s) => s.message.type === "read-page").frameId, 3);
+});
+
+/** One click on the icon, in a tab whose frames report `frames`. */
+async function iconClick(frames) {
+  const { state } = load({ hasScript: true, frames });
+  state.listeners.iconClick({ id: 7 });
+  await settle();
+  return JSON.stringify(state.sentTo.map((s) => ({ type: s.message.type, frameId: s.frameId })));
+}
+const sends = (list) => JSON.stringify(list);
+
+test("one click on the icon reads the whole page", async () => {
+  const sent = await iconClick([{ frameId: 0, page: 900, selection: 0, reading: false, seen: true }]);
+  assert.strictEqual(sent, sends([{ type: "read-page", frameId: 0 }]));
+});
+
+test("one click on the icon reads the selected text instead, when there is some", async () => {
+  const sent = await iconClick([
+    { frameId: 0, page: 900, selection: 0, reading: false, seen: true },
+    { frameId: 2, page: 300, selection: 25, reading: false, seen: true },
+  ]);
+  assert.strictEqual(sent, sends([{ type: "read-selection", frameId: 2 }]));
+});
+
+test("clicking the icon while reading pauses or plays", async () => {
+  const sent = await iconClick([{ frameId: 0, page: 900, selection: 0, reading: true, seen: true }]);
+  assert.strictEqual(sent, sends([{ type: "toggle" }]));
+});
+
+test("a new selection while reading starts reading it", async () => {
+  const sent = await iconClick([{ frameId: 0, page: 900, selection: 40, reading: true, seen: true }]);
+  assert.strictEqual(sent, sends([{ type: "read-selection", frameId: 0 }]));
 });

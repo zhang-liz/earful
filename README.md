@@ -216,15 +216,17 @@ python3 extension/check-manifest.py extension
 It applies the rules Chrome applies, so an unknown permission or a bad host
 pattern is caught here rather than as a red error on the extensions page.
 
-To use it: right-click a page and choose **Read the whole page**, or select
-text and choose **Read this aloud**. `Alt+R` reads the selection. A small
-player appears at the bottom with play, skip and speed buttons.
+To use it: click the Earful icon, or press `Alt+R`. It reads the whole page,
+or only the text you selected. Click again to pause or play. Right-click a page
+for **Read the whole page** or **Read this aloud**. A small player appears at
+the bottom with play, skip and speed buttons.
 
 Menus, sidebars and footers are left out, and so is code: a `<pre>` block or
 an inline `<code>` span is punctuation when read aloud, so it is skipped.
 
-Click the toolbar icon to set the server address, the voice, and the password
-if you set one. The defaults match `./run.sh` on the same machine.
+The gear on the player opens the settings: the server address, the voice, and
+the password if you set one. They are also under **Options** when you
+right-click the icon. The defaults match `./run.sh` on the same machine.
 
 The server must be running, because it does the speaking. To point the
 extension at a server on another machine, run `./run.sh --lan`, set

@@ -286,3 +286,18 @@ test("another tab taking the sound leaves this one paused, ready to play", async
   await settle();
   assert.strictEqual(h.state.audio.paused, false, "play here takes the sound back");
 });
+
+test("a press while getting ready holds the start, and the next press begins", async () => {
+  const live = { ready: 0 };
+  const { h } = await reading({ ready: 0, live });
+  await h.send({ type: "toggle", settings: {} });
+  await settle();
+  assert.match(h.status(), /Paused/);
+  live.ready = 4;                       // the first parts arrive
+  await settle(1200);
+  assert.strictEqual(h.state.audio.paused, true, "must stay quiet after a pause");
+  await h.send({ type: "toggle", settings: {} });
+  await settle();
+  assert.strictEqual(h.state.audio.paused, false);
+  assert.match(h.state.audio.src, /\/0\.wav$/);
+});

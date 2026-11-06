@@ -130,10 +130,31 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
-chrome.commands.onCommand.addListener(async (command, tab) => {
-  if (command === "read-selection" && tab?.id) {
-    send(tab.id, { type: "read-selection" });
+/**
+ * The one-click action, from the toolbar icon or Alt+R.
+ *
+ * New selected text is read. Otherwise a reading under way pauses or plays,
+ * and with none, the whole page is read.
+ */
+async function readOrPause(tabId) {
+  const found = await measureFrames(tabId);
+  if (!found.length) return;
+  const selected = found.find((frame) => frame.selection > 0);
+  if (selected) {
+    await deliver(tabId, { type: "read-selection" }, selected.frameId);
+  } else if (found.some((frame) => frame.reading)) {
+    await deliver(tabId, { type: "toggle" });
+  } else {
+    await deliver(tabId, { type: "read-page" }, pick(found, "page").frameId);
   }
+}
+
+chrome.action.onClicked.addListener((tab) => {
+  if (tab?.id) readOrPause(tab.id);
+});
+
+chrome.commands.onCommand.addListener(async (command, tab) => {
+  if (command === "read-or-pause" && tab?.id) readOrPause(tab.id);
 });
 
 /**
@@ -157,19 +178,16 @@ async function callServer({ path, options = {} }) {
   }
 }
 
-// Messages from the popup, which has no access to the page itself, and from
-// the content script, which needs the server.
+// Messages from the content script: calls to the server, and the player's
+// gear button.
 chrome.runtime.onMessage.addListener((message, _sender, respond) => {
   if (message.type === "api") {
     callServer(message).then(respond);
     return true;   // respond asynchronously
   }
-  if (message.type === "popup-command") {
-    chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
-      if (tab?.id) send(tab.id, message.command);
-      respond({ ok: true });
-    });
-    return true;   // respond asynchronously
+  if (message.type === "open-settings") {
+    chrome.runtime.openOptionsPage();
+    return false;
   }
   return false;
 });

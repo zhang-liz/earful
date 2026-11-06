@@ -59,6 +59,7 @@ def check(folder):
     files = []
     if m.get("background",{}).get("service_worker"): files.append(m["background"]["service_worker"])
     if m.get("action",{}).get("default_popup"): files.append(m["action"]["default_popup"])
+    if m.get("options_ui",{}).get("page"): files.append(m["options_ui"]["page"])
     for cs in m.get("content_scripts", []): files += cs.get("js",[]) + cs.get("css",[])
     files += list(m.get("icons",{}).values())
     files += list(m.get("action",{}).get("default_icon",{}).values())
