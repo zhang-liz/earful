@@ -356,9 +356,25 @@ def _render_job(
         job.publish()
 
 
+def _page(name: str) -> str:
+    """A page, with the words for every screen language put into it.
+
+    In the page rather than fetched, so the page never shows before its words.
+    """
+    strings = {
+        path.stem: json.loads(path.read_text())
+        for path in sorted((ROOT / "app" / "strings").glob("*.json"))
+    }
+    data = json.dumps(strings, ensure_ascii=False).replace("</", "<\\/")
+    return (ROOT / "app" / name).read_text().replace(
+        '<script id="strings" type="application/json"></script>',
+        f'<script id="strings" type="application/json">{data}</script>',
+    )
+
+
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
-    return (ROOT / "app" / "index.html").read_text()
+    return _page("index.html")
 
 
 @app.get("/icon.png")
@@ -690,7 +706,7 @@ def continue_page() -> str:
     Also answers at /go, because this is an address typed on a phone keyboard
     and every character saved is worth having.
     """
-    return (ROOT / "app" / "continue.html").read_text()
+    return _page("continue.html")
 
 
 def _lan_address() -> str:
