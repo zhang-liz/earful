@@ -13,7 +13,7 @@ English: [README.md](README.md)
 
 需要 Apple 芯片（M1 或更新）的 Mac，macOS 13 或更新版本。
 
-1. 在[最新版本](https://github.com/zhang-liz/tts/releases/latest)页面下载 `Earful.dmg`。
+1. 在[最新版本](https://github.com/zhang-liz/earful/releases/latest)页面下载 `Earful.dmg`。
 2. 双击 `Earful.dmg`，把 Earful 拖到“应用程序”文件夹。
 3. 第一次打开时，macOS 会说无法验证 Earful。
    这是因为 Earful 没有向苹果付费登记，不是因为它有问题。
@@ -43,7 +43,7 @@ Earful 里面已经有全部声音，不用再下载别的东西，在中国大�
 在中国大陆打不开 Chrome 应用商店，所以请按下面的步骤自己安装：
 
 1. 先打开一次 Earful 应用。
-2. 在[最新版本](https://github.com/zhang-liz/tts/releases/latest)页面下载
+2. 在[最新版本](https://github.com/zhang-liz/earful/releases/latest)页面下载
    `earful-extension-<版本>.zip`，然后解压。
 3. 在浏览器地址栏输入 `chrome://extensions`（Edge 输入 `edge://extensions`）。
 4. 打开右上角的“开发者模式”。
@@ -61,7 +61,7 @@ Earful 里面已经有全部声音，不用再下载别的东西，在中国大�
 
 ## 遇到问题
 
-请在 [Issues](https://github.com/zhang-liz/tts/issues/new/choose) 里告诉我们，用中文写就可以。
+请在 [Issues](https://github.com/zhang-liz/earful/issues/new/choose) 里告诉我们，用中文写就可以。
 安全问题请不要公开发，见 [SECURITY.md](SECURITY.md)。
 
 Mac 应用的日志在 `~/Library/Logs/Earful.log`，报告问题时附上它会很有帮助。

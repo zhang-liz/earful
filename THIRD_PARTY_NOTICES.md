@@ -17,7 +17,7 @@ The full text is in `licenses/GPL-3.0.txt`. You can get their source code here:
 | eSpeak NG (`libespeak-ng` and `espeak-ng-data`, shipped in `espeakng-loader`) | 1.52.0 | https://github.com/espeak-ng/espeak-ng/tree/1.52.0 |
 | phonemizer-fork | 3.3.2 | https://pypi.org/project/phonemizer-fork/3.3.2/#files |
 
-The Earful code that uses them is public at https://github.com/zhang-liz/tts.
+The Earful code that uses them is public at https://github.com/zhang-liz/earful.
 If a link above stops working, open an issue there and we will send you the
 source.
 

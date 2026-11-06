@@ -5,7 +5,7 @@
 Please do not open a public issue for a security problem.
 
 Report it privately: open
-https://github.com/zhang-liz/tts/security/advisories/new and fill in the form.
+https://github.com/zhang-liz/earful/security/advisories/new and fill in the form.
 We reply within 7 days.
 
 ## What Earful does with your data

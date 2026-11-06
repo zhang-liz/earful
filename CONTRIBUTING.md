@@ -14,8 +14,8 @@ Found a security problem? Do not open a public issue. See `SECURITY.md`.
 You need a Mac or Linux computer, [uv](https://docs.astral.sh/uv/) and Node.js 22.
 
 ```bash
-git clone https://github.com/zhang-liz/tts.git
-cd tts
+git clone https://github.com/zhang-liz/earful.git
+cd earful
 ./run.sh                 # starts Earful at http://127.0.0.1:8888
 ```
 
