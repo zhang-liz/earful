@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#14121c">
-<title>Carry on reading</title>
+<title data-i18n="continue.heading">Carry on reading</title>
 <style>
   :root {
     /* The same muted 8-bit palette the main page uses. */
@@ -82,10 +82,10 @@
 </style>
 </head>
 <body>
-  <h1>Carry on reading</h1>
+  <h1 data-i18n="continue.heading">Carry on reading</h1>
 
   <div class="card">
-    <p id="title">Looking for something to read…</p>
+    <p id="title" data-i18n="continue.looking">Looking for something to read…</p>
     <p id="where"></p>
   </div>
 
@@ -93,7 +93,7 @@
 
   <div class="controls">
     <button class="step" id="back" disabled>&#9664;&#9664;</button>
-    <button id="play" disabled>Play</button>
+    <button id="play" disabled data-i18n="continue.play">Play</button>
     <button class="step" id="forward" disabled>&#9654;&#9654;</button>
   </div>
 
@@ -103,10 +103,47 @@
     <button data-rate="2">2x</button>
   </div>
 
-  <p id="status">Start something on your computer, then come back here.</p>
+  <p id="status" data-i18n="continue.start">Start something on your computer, then come back here.</p>
 
+<script id="strings" type="application/json"></script>
 <script>
 "use strict";
+
+// <i18n> The same in app/index.html and app/continue.html; a test fails if
+// the two copies differ. Every word on screen comes from
+// app/strings/<language>.json, which the server puts into the page. The
+// language follows the browser until the reader picks one in Earful.
+const STRINGS = JSON.parse(document.getElementById("strings").textContent || "{}");
+const SAVED_LANGUAGE = "earful.language";
+let lang = (() => {
+  try {
+    const saved = localStorage.getItem(SAVED_LANGUAGE);
+    if (saved && STRINGS[saved]) return saved;
+  } catch { /* no storage: follow the browser */ }
+  return /^zh/i.test(navigator.language || "") && STRINGS.zh ? "zh" : "en";
+})();
+function t(key, vars = {}) {
+  const text = (STRINGS[lang] && STRINGS[lang][key]) ?? (STRINGS.en && STRINGS.en[key]) ?? key;
+  return text.replace(/\{(\w+)\}/g, (_, name) => String(vars[name] ?? ""));
+}
+function applyStrings(root = document) {
+  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  for (const el of root.querySelectorAll("[data-i18n]")) el.textContent = t(el.dataset.i18n);
+  for (const attr of ["title", "placeholder", "aria-label"]) {
+    for (const el of root.querySelectorAll(`[data-i18n-${attr}]`)) {
+      el.setAttribute(attr, t(el.getAttribute(`data-i18n-${attr}`)));
+    }
+  }
+}
+/** A refusal from the server, in the reader's language. Not every page has one to show. */
+/* exported refusal */
+function refusal(answer, fallback) {
+  const key = answer && answer.code ? `error.${answer.code}` : "";
+  if (key && STRINGS.en && STRINGS.en[key]) return t(key);
+  return (answer && answer.detail) || t(fallback);
+}
+// </i18n>
+applyStrings();
 
 const player = new Audio();
 player.preservesPitch = true;
@@ -128,7 +165,7 @@ async function findSpot() {
     if (!response.ok) throw new Error(String(response.status));
     return await response.json();
   } catch {
-    say("Cannot reach the computer. Is it still on the same Wi-Fi?");
+    say(t("continue.cannotReach"));
     return null;
   }
 }
@@ -144,21 +181,19 @@ function show(found) {
   spot = found;
   index = found.index;
 
-  $("title").textContent = found.title || "Your reading";
+  $("title").textContent = found.title || t("reading.title");
   $("play").disabled = false;
   $("back").disabled = false;
   $("forward").disabled = false;
   updateWhere();
 
   const seconds = Math.round(found.at);
-  say(seconds > 0
-    ? `Ready to carry on from ${seconds} seconds in. Tap Play.`
-    : "Ready. Tap Play.");
+  say(seconds > 0 ? t("continue.readyAt", { seconds }) : t("continue.ready"));
 }
 
 function updateWhere() {
   if (!spot) return;
-  $("where").textContent = `Part ${index + 1} of ${spot.total}`;
+  $("where").textContent = t("continue.part", { part: index + 1, total: spot.total });
   $("progress").style.width = `${((index + 1) / spot.total) * 100}%`;
 }
 
@@ -182,22 +217,22 @@ function playPart(i, startAt) {
 
   player.play().then(() => {
     retries = 0;                 // this part arrived; a later stall starts fresh
-    $("play").textContent = "Pause";
-    say(`Part ${i + 1} of ${spot.total}`);
+    $("play").textContent = t("continue.pause");
+    say(t("continue.part", { part: i + 1, total: spot.total }));
   }).catch((error) => {
     if (error.name === "AbortError") return;   // a newer skip replaced this part
     // The phone refused to make sound without a tap. The position is kept so
     // the next tap carries on from the same place rather than restarting.
     pending = { part: i, at: startAt || 0 };
-    $("play").textContent = "Play";
-    say("Tap Play again to start the sound.");
+    $("play").textContent = t("continue.play");
+    say(t("continue.tapAgain"));
   });
 }
 
 function finish() {
   player.pause();
-  $("play").textContent = "Play";
-  say("Finished.");
+  $("play").textContent = t("continue.play");
+  say(t("continue.finished"));
 }
 
 player.addEventListener("ended", () => playPart(index + 1, 0));
@@ -214,8 +249,8 @@ player.addEventListener("error", async () => {
   if (!spot || index >= spot.total) return;
 
   if (retries >= MOST_RETRIES) {
-    say("That part never arrived. Start it again on your computer.");
-    $("play").textContent = "Play";
+    say(t("continue.neverArrived"));
+    $("play").textContent = t("continue.play");
     return;
   }
   retries += 1;
@@ -226,13 +261,13 @@ player.addEventListener("error", async () => {
     if (!response.ok) {
       spot = null;
       $("play").disabled = true;
-      say("That reading is gone. Start a new one on your computer.");
+      say(t("continue.gone"));
       waitForSpot();
       return;
     }
   } catch { /* the network wobbled; the retry below still stands */ }
 
-  say("Waiting for the computer to finish this part\u2026");
+  say(t("continue.waiting"));
   setTimeout(() => playPart(index, 0), 1500);
 });
 
@@ -240,8 +275,8 @@ $("play").addEventListener("click", () => {
   if (!spot) return;
   if (!player.paused) {
     player.pause();
-    $("play").textContent = "Play";
-    say("Paused.");
+    $("play").textContent = t("continue.play");
+    say(t("continue.paused"));
     return;
   }
   // A part the phone refused to start is retried from the same spot, so a
@@ -255,7 +290,7 @@ $("play").addEventListener("click", () => {
     playPart(index, spot.at);
   } else {
     player.play();
-    $("play").textContent = "Pause";
+    $("play").textContent = t("continue.pause");
   }
 });
 
@@ -280,8 +315,9 @@ async function waitForSpot() {
   if (poll) { clearTimeout(poll); poll = null; }
 
   const found = await findSpot();
-  if (found && !found.waiting) { show(found); return; }
-  if (found) say("Nothing to carry on yet. Start reading on your computer.");
+  // Only a spot with a job can be played; anything else means keep waiting.
+  if (found && !found.waiting && found.job) { show(found); return; }
+  if (found) say(t("continue.nothing"));
   poll = setTimeout(waitForSpot, 2000);
 }
 

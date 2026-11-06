@@ -73,6 +73,12 @@
     line-height: 1.5;
   }
   .tagline { color: var(--muted); font-size: 8px; margin: 0; line-height: 1.8; }
+  /* The language switch names the other language, in that language. */
+  .lang { margin-top: 10px; width: 100%; font-family: inherit; }
+  .pick { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 8px; color: var(--muted); }
+  .pick > span { flex: 0 0 auto; min-width: 4.5em; }
+  .pick select { flex: 1 1 auto; min-width: 0; }
+  .pick button { flex: 0 0 auto; padding: 9px 8px; }
   .legend {
     font-size: 8px;
     color: var(--amber);
@@ -338,56 +344,68 @@
   <aside class="side">
     <div class="box">
       <h1>EARFUL</h1>
-      <p class="tagline">PASTE TEXT.<br />PRESS PLAY.</p>
+      <p class="tagline"><span data-i18n="tagline.paste">PASTE TEXT.</span><br /><span data-i18n="tagline.play">PRESS PLAY.</span></p>
+      <button id="language" class="lang" data-i18n="language.switch" data-i18n-aria-label="language.label">中文</button>
     </div>
 
     <div class="box">
-      <p class="legend">// VOICE</p>
-      <select id="voice" aria-label="Voice"></select>
-      <div style="height:10px"></div>
-      <button id="sample" style="width:100%">HEAR VOICE</button>
+      <p class="legend" data-i18n="legend.voice">// VOICE</p>
+      <p class="pick" id="voiceEnRow"><span data-i18n="voice.en">ENGLISH</span>
+        <select id="voice" data-i18n-aria-label="voice.enLabel" aria-label="English voice"></select>
+        <button id="sample" data-i18n="voice.hear" data-i18n-aria-label="voice.hearLabel">HEAR</button></p>
+      <p class="pick hidden" id="voiceZhRow"><span data-i18n="voice.zh">CHINESE</span>
+        <select id="voiceZh" data-i18n-aria-label="voice.zhLabel" aria-label="Chinese voice"></select>
+        <button id="sampleZh" data-i18n="voice.hear" data-i18n-aria-label="voice.hearLabel">HEAR</button></p>
+      <div class="hidden" id="readLangRow">
+        <p class="legend" data-i18n="legend.readLang">// READ AS</p>
+        <select id="readLang" data-i18n-aria-label="readLang.label" aria-label="Reading language">
+          <option value="" data-i18n="readLang.auto">AUTO</option>
+          <option value="zh" data-i18n="readLang.zh">CHINESE</option>
+          <option value="en" data-i18n="readLang.en">ENGLISH</option>
+        </select>
+      </div>
     </div>
 
     <div class="box">
-      <p class="legend">// SPEED</p>
+      <p class="legend" data-i18n="legend.speed">// SPEED</p>
       <div class="speeds" id="presets">
         <button data-speed="1">1x</button>
         <button data-speed="1.5">1.5x</button>
         <button data-speed="2">2x</button>
       </div>
       <div class="fine">
-        <input id="speed" type="range" min="0.5" max="3" step="0.05" value="1" aria-label="Fine speed" />
+        <input id="speed" type="range" min="0.5" max="3" step="0.05" value="1" data-i18n-aria-label="speed.fine" aria-label="Fine speed" />
         <span id="speedLabel">1.00x</span>
       </div>
     </div>
 
     <div class="box" id="playbox">
-      <p class="legend">// PLAYER</p>
+      <p class="legend" data-i18n="legend.player">// PLAYER</p>
       <div class="transport">
-        <button id="prev" title="Previous part">&#9198;</button>
-        <button id="toggle" title="Play or pause">&#9654;</button>
-        <button id="next" title="Next part">&#9197;</button>
+        <button id="prev" data-i18n-title="player.prev" title="Previous part">&#9198;</button>
+        <button id="toggle" data-i18n-title="player.toggle" title="Play or pause">&#9654;</button>
+        <button id="next" data-i18n-title="player.next" title="Next part">&#9197;</button>
       </div>
       <div style="height:7px"></div>
-      <button id="loop" class="on" aria-pressed="true" title="Start again from the top when the reading ends" style="width:100%">LOOP: ON</button>
+      <button id="loop" class="on" aria-pressed="true" data-i18n-title="player.loopTitle" title="Start again from the top when the reading ends" style="width:100%">LOOP: ON</button>
       <div class="meter" id="meter" aria-hidden="true"></div>
       <p class="stat">
-        <b id="statusLine">IDLE</b><br />
+        <b id="statusLine" data-i18n="status.idle">IDLE</b><br />
         <span id="clock"></span>
       </p>
       <div style="height:8px"></div>
-      <button id="download" class="hidden" style="width:100%">SAVE .WAV</button>
+      <button id="download" class="hidden" style="width:100%" data-i18n="player.download">SAVE .WAV</button>
     </div>
 
     <div class="box hidden" id="bookmarkBox">
-      <p class="legend">// READ ANY WEB PAGE</p>
-      <a id="bookmarklet" class="dragme" href="#">&#9654; READ IN EARFUL</a>
-      <p class="hint" id="bookmarkHint">DRAG THIS TO YOUR BOOKMARKS BAR. THEN CLICK IT ON ANY PAGE.</p>
+      <p class="legend" data-i18n="legend.bookmark">// READ ANY WEB PAGE</p>
+      <a id="bookmarklet" class="dragme" href="#" data-i18n="bookmark.link">&#9654; READ IN EARFUL</a>
+      <p class="hint" id="bookmarkHint" data-i18n="bookmark.hint">DRAG THIS TO YOUR BOOKMARKS BAR. THEN CLICK IT ON ANY PAGE.</p>
     </div>
 
     <div class="box hidden" id="phonebox">
-      <p class="legend">// ON YOUR PHONE</p>
-      <p class="hint" id="phoneHint">CARRY ON WHERE YOU LEFT OFF</p>
+      <p class="legend" data-i18n="legend.phone">// ON YOUR PHONE</p>
+      <p class="hint" id="phoneHint" data-i18n="phone.hint">CARRY ON WHERE YOU LEFT OFF</p>
       <p class="phoneUrl" id="phoneUrl"></p>
     </div>
   </aside>
@@ -395,34 +413,70 @@
   <!-- ================= middle: the article ================= -->
   <main class="main">
     <div class="box hidden" id="copiedBox">
-      <p class="legend">// EARFUL CANNOT SEE THAT PAGE'S TEXT</p>
-      <p class="hint">GO BACK TO THE PAGE. CLICK IN THE TEXT. PRESS CMD+A, THEN CMD+C. THEN COME BACK AND PRESS THIS BUTTON.</p>
+      <p class="legend" data-i18n="legend.copied">// EARFUL CANNOT SEE THAT PAGE'S TEXT</p>
+      <p class="hint" data-i18n="copied.hint">GO BACK TO THE PAGE. CLICK IN THE TEXT. PRESS CMD+A, THEN CMD+C. THEN COME BACK AND PRESS THIS BUTTON.</p>
       <div style="height:10px"></div>
-      <button id="readCopied" class="primary">&#9654; READ WHAT I COPIED</button>
+      <button id="readCopied" class="primary" data-i18n="copied.button">&#9654; READ WHAT I COPIED</button>
       <p class="err hidden" id="copiedError"></p>
     </div>
 
     <div class="box" id="inputBox">
-      <p class="legend">// YOUR TEXT</p>
-      <textarea id="text" placeholder="Paste an article, a chapter, notes - any length."></textarea>
+      <p class="legend" data-i18n="legend.text">// YOUR TEXT</p>
+      <textarea id="text" data-i18n-placeholder="text.placeholder" placeholder="Paste an article, a chapter, notes - any length."></textarea>
       <div style="height:12px"></div>
-      <button id="go" class="primary">&#9654; READ IT TO ME</button>
+      <button id="go" class="primary" data-i18n="text.go">&#9654; READ IT TO ME</button>
       <div style="height:10px"></div>
-      <p class="hint" id="count">0 WORDS</p>
+      <p class="hint" id="count" data-i18n="count.none">0 WORDS</p>
       <p class="err hidden" id="error"></p>
     </div>
 
     <div class="box hidden" id="readerBox">
-      <p class="legend">// CLICK A WORD TO JUMP &mdash; DOUBLE-CLICK TO EDIT ALL</p>
+      <p class="legend" data-i18n="legend.reader">// CLICK A WORD TO JUMP &mdash; DOUBLE-CLICK TO EDIT ALL</p>
       <div class="reader" id="reader"></div>
       <p class="err hidden" id="readerError"></p>
       <div style="height:12px"></div>
-      <button id="edit">&#9998; EDIT TEXT</button>
+      <button id="edit" data-i18n="reader.edit">&#9998; EDIT TEXT</button>
     </div>
   </main>
 </div>
 
+<script id="strings" type="application/json"></script>
 <script>
+// <i18n> The same in app/index.html and app/continue.html; a test fails if
+// the two copies differ. Every word on screen comes from
+// app/strings/<language>.json, which the server puts into the page. The
+// language follows the browser until the reader picks one in Earful.
+const STRINGS = JSON.parse(document.getElementById("strings").textContent || "{}");
+const SAVED_LANGUAGE = "earful.language";
+let lang = (() => {
+  try {
+    const saved = localStorage.getItem(SAVED_LANGUAGE);
+    if (saved && STRINGS[saved]) return saved;
+  } catch { /* no storage: follow the browser */ }
+  return /^zh/i.test(navigator.language || "") && STRINGS.zh ? "zh" : "en";
+})();
+function t(key, vars = {}) {
+  const text = (STRINGS[lang] && STRINGS[lang][key]) ?? (STRINGS.en && STRINGS.en[key]) ?? key;
+  return text.replace(/\{(\w+)\}/g, (_, name) => String(vars[name] ?? ""));
+}
+function applyStrings(root = document) {
+  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  for (const el of root.querySelectorAll("[data-i18n]")) el.textContent = t(el.dataset.i18n);
+  for (const attr of ["title", "placeholder", "aria-label"]) {
+    for (const el of root.querySelectorAll(`[data-i18n-${attr}]`)) {
+      el.setAttribute(attr, t(el.getAttribute(`data-i18n-${attr}`)));
+    }
+  }
+}
+/** A refusal from the server, in the reader's language. Not every page has one to show. */
+/* exported refusal */
+function refusal(answer, fallback) {
+  const key = answer && answer.code ? `error.${answer.code}` : "";
+  if (key && STRINGS.en && STRINGS.en[key]) return t(key);
+  return (answer && answer.detail) || t(fallback);
+}
+// </i18n>
+
 const $ = (id) => document.getElementById(id);
 const text = $("text"), voice = $("voice"), speed = $("speed");
 
@@ -444,28 +498,86 @@ let waiting = false;   // playback caught up to rendering
 let started = false;   // has this job begun playing at all
 let pendingSeek = 0;   // where to resume once the new source has loaded
 let defaultVoice = "af_heart";  // until /voices answers
+let phoneInfo = null;  // what /phone answered, to word its hint
 
 /* ---------- text box ---------- */
 function refreshCount() {
   const value = text.value.trim();
-  const words = value ? value.split(/\s+/).length : 0;
-  const minutes = words / (150 * Number(speed.value));
+  // A Chinese character counts as a word, and is read about half as fast.
+  const han = (value.match(/[\u3400-\u9fff\uf900-\ufaff]/g) || []).length;
+  const latin = value.replace(/[\u3400-\u9fff\uf900-\ufaff]/g, " ").trim();
+  const english = latin ? latin.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length : 0;
+  const words = english + han;
+  const minutes = (english / 150 + han / 250) / Number(speed.value);
   $("count").textContent = words
-    ? `${words.toLocaleString()} WORDS / ~${minutes < 1 ? "<1" : Math.round(minutes)} MIN`
-    : "0 WORDS";
+    ? t("count.words", { words: words.toLocaleString(), minutes: minutes < 1 ? "<1" : Math.round(minutes) })
+    : t("count.none");
+}
+
+// A voice for each language the server reads. An older server reads English
+// only and has no languages: then there is one list, as before.
+let voiceInfo = null;      // what /voices answered
+let defaultZh = "";        // the server's Chinese voice, if it reads Chinese
+const SAVED_VOICES = "earful.voices";
+
+function savedPicks() {
+  try { return JSON.parse(localStorage.getItem(SAVED_VOICES) || "{}") || {}; } catch { return {}; }
+}
+
+/** The voice picked for each language. */
+function picks() {
+  const chosen = { en: voice.value || defaultVoice };
+  if (defaultZh) chosen.zh = $("voiceZh").value || defaultZh;
+  return chosen;
+}
+
+function fillVoices() {
+  if (!voiceInfo) return;
+  for (const [select, language] of [[voice, "en"], [$("voiceZh"), "zh"]]) {
+    const keep = select.value;
+    select.textContent = "";
+    for (const item of voiceInfo.voices) {
+      if ((item.language || "en") !== language) continue;
+      const option = document.createElement("option");
+      option.value = item.id;
+      option.textContent = ((item.labels && item.labels[lang]) || item.label).toUpperCase();
+      select.append(option);
+    }
+    if (keep) select.value = keep;
+  }
+}
+
+function showPicks(chosen) {
+  voice.value = chosen.en || defaultVoice;
+  if (!voice.value) voice.value = defaultVoice;      // a voice the server no longer has
+  if (defaultZh) {
+    $("voiceZh").value = chosen.zh || defaultZh;
+    if (!$("voiceZh").value) $("voiceZh").value = defaultZh;
+  }
 }
 
 async function loadVoices() {
   const data = await (await fetch("/voices")).json();
-  for (const item of data.voices) {
-    const option = document.createElement("option");
-    option.value = item.id;
-    option.textContent = item.label.toUpperCase();
-    voice.append(option);
-  }
+  voiceInfo = data;
   defaultVoice = data.default;
+  const zh = (data.languages || []).find((language) => language.id === "zh");
+  defaultZh = zh ? zh.default : "";
+  $("voiceZhRow").classList.toggle("hidden", !zh);
+  $("readLangRow").classList.toggle("hidden", !zh);
+  fillVoices();
   // A reading put back after a refresh may have got here first.
-  voice.value = (job && job.voice) || data.default;
+  showPicks({ ...savedPicks(), ...(job && job.voice ? { en: job.voice } : {}), ...(job && job.voices) });
+}
+
+/** What /speak is sent: one voice for older servers, a voice per language for newer. */
+function speakBody(value) {
+  const chosen = picks();
+  const body = { text: value, voice: chosen.en };
+  if (defaultZh) {
+    body.voices = chosen;
+    if ($("readLang").value) body.language = $("readLang").value;
+  }
+  return body;
 }
 
 /* ---------- speed ---------- */
@@ -582,7 +694,7 @@ function openEditor(caretPart = 0) {
   const help = document.createElement("p");
   help.className = "edit-help";
   help.textContent =
-    "BLANK LINE STARTS A NEW PART / CMD+ENTER SAVES / ESC CANCELS";
+    t("reader.editHelp");
 
   box.addEventListener("keydown", (event) => {
     event.stopPropagation();          // keys here belong to the editor only
@@ -640,7 +752,7 @@ async function saveEditor(value) {
   // away what was typed.
   const box = $("reader").querySelector(".edit-box");
   if (box) box.disabled = true;
-  $("statusLine").textContent = "SAVING...";
+  $("statusLine").textContent = t("status.saving");
   clearError();
 
   let response;
@@ -652,13 +764,13 @@ async function saveEditor(value) {
     });
   } catch (error) {
     if (box) { box.disabled = false; box.focus(); }
-    fail(`Could not reach the server: ${error}`);
+    fail(t("error.reach", { error }));
     return;
   }
   if (!response.ok) {
     const detail = await response.json().catch(() => ({ detail: response.statusText }));
     if (box) { box.disabled = false; box.focus(); }   // your text is still here
-    fail(detail.detail || "Could not save the text.");
+    fail(refusal(detail, "error.save"));
     return;
   }
 
@@ -813,19 +925,19 @@ function clearError() {
 }
 
 function setStatus() {
-  if (!job) { $("statusLine").textContent = "IDLE"; $("clock").textContent = ""; return; }
+  if (!job) { $("statusLine").textContent = t("status.idle"); $("clock").textContent = ""; return; }
   $("statusLine").textContent =
-    waiting ? "BUFFERING..."
-    : playing ? `PART ${index + 1} / ${job.total}`
-    : index >= job.total ? "FINISHED"
-    : started ? "PAUSED"
+    waiting ? t("status.buffering")
+    : playing ? t("status.part", { part: index + 1, total: job.total })
+    : index >= job.total ? t("status.finished")
+    : started ? t("status.paused")
     // Nothing has played yet. Once the audio exists there is nothing left to
     // wait for, so say what to do rather than claiming to still be working.
-    : ready >= job.total ? "READY - PRESS PLAY"
-    : "GETTING READY...";
+    : ready >= job.total ? t("status.readyPress")
+    : t("status.gettingReady");
   $("clock").textContent = ready < job.total
-    ? `${ready}/${job.total} PARTS READY`
-    : "ALL PARTS READY";
+    ? t("clock.ready", { ready, total: job.total })
+    : t("clock.allReady");
   drawMeter();
   paintReader();
 }
@@ -847,7 +959,7 @@ function playChunk(i, at = 0) {
     index = i;
     $("toggle").innerHTML = "&#9654;";
     setStatus();
-    $("statusLine").textContent = "STOPPED";
+    $("statusLine").textContent = t("status.stopped");
     return;
   }
   if (i >= ready) {                     // rendering has not caught up
@@ -950,7 +1062,7 @@ function paintLoop() {
   const button = $("loop");
   button.classList.toggle("on", loop);
   button.setAttribute("aria-pressed", String(loop));
-  button.textContent = loop ? "LOOP: ON" : "LOOP: OFF";
+  button.textContent = loop ? t("player.loopOn") : t("player.loopOff");
 }
 
 function toggleLoop() {
@@ -982,7 +1094,7 @@ function handOff(force) {
       job: job.id,
       index,
       at: player.currentTime || 0,
-      title: (text.value.trim().split("\n")[0] || "Your reading").slice(0, 80),
+      title: (text.value.trim().split("\n")[0] || t("reading.title")).slice(0, 80),
     }),
   }).catch(() => { /* handing over is optional */ });
 }
@@ -1113,11 +1225,11 @@ function followAgain(id, autoplay) {
     if (!job || job.id !== id || stream) return;
 
     if (response && response.status === 404) {
-      fail("The server no longer has this reading. Start it again to hear the rest.");
+      fail(t("error.gone"));
     } else if (response && response.ok) {
       listenForParts(autoplay);
     } else {
-      if (waiting) $("statusLine").textContent = "LOST THE SERVER - TRYING AGAIN...";
+      if (waiting) $("statusLine").textContent = t("status.lostServer");
       followAgain(id, autoplay);
     }
   }, RETRY_MS);
@@ -1140,24 +1252,24 @@ async function speak() {
   $("download").classList.add("hidden");
   $("toggle").innerHTML = "&#9654;";
   $("go").disabled = true;
-  $("statusLine").textContent = "GETTING READY...";
+  $("statusLine").textContent = t("status.gettingReady");
 
   let response;
   try {
     response = await fetch("/speak", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: text.value, voice: voice.value || defaultVoice })
+      body: JSON.stringify(speakBody(text.value))
     });
   } catch (error) {
-    fail(`Could not reach the server: ${error}`);
+    fail(t("error.reach", { error }));
     return;
   }
   $("go").disabled = false;
 
   if (!response.ok) {
     const detail = await response.json().catch(() => ({ detail: response.statusText }));
-    fail(detail.detail || "Something went wrong.");
+    fail(refusal(detail, "error.generic"));
     return;
   }
 
@@ -1247,7 +1359,7 @@ async function restoreJob() {
 function fail(message) {
   $("go").disabled = false;
   if (job) setStatus();                // the parts ready may have just changed
-  $("statusLine").textContent = "STOPPED";
+  $("statusLine").textContent = t("status.stopped");
   // Only show the paste box again when there is nothing to fall back to;
   // otherwise the reader stays and both boxes would be on screen at once.
   if (!job) $("inputBox").classList.remove("hidden");
@@ -1266,20 +1378,20 @@ function stopSample() {
   resumeAfterSample = false;
 }
 
-async function sample() {
-  $("sample").disabled = true;
-  const line = "This is how I sound. I can read your whole article in this voice.";
+async function sample(button, select) {
+  button.disabled = true;
+  const line = t("voice.sample");
   let response;
   try {
     response = await fetch("/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: line, voice: voice.value || defaultVoice })
+      body: JSON.stringify({ text: line, voice: select.value || defaultVoice })
     });
   } catch {
     return;                            // a sample is not worth an error message
   } finally {
-    $("sample").disabled = false;
+    button.disabled = false;
   }
   if (!response.ok) return;
   const url = URL.createObjectURL(await response.blob());
@@ -1309,13 +1421,15 @@ async function sample() {
 // The voice did not change and the audio is still there, so say why and let
 // Play carry on with what the reader had.
 function keepVoice(message) {
-  if (job.voice) voice.value = job.voice;
+  showPicks({ ...(job.voice ? { en: job.voice } : {}), ...job.voices });
   fail(message);
 }
 
 // Picking a voice re-reads the article in it. Without a job yet, the choice
 // simply applies to the next one.
-voice.addEventListener("change", async () => {
+async function changeVoice() {
+  const chosen = picks();
+  try { localStorage.setItem(SAVED_VOICES, JSON.stringify(chosen)); } catch { /* fine */ }
   if (!job) return;
   // A voice change redraws the reader, which would strand an open editor and
   // lose what was typed in it. Save first, then re-read in the new voice.
@@ -1324,8 +1438,11 @@ voice.addEventListener("change", async () => {
     await saveEditor(box ? box.value : "");
     if (editing) return;               // the save failed; keep the editor
   }
-  const chosen = voice.value;
-  if (chosen === job.voice) return;    // already reading in this voice
+  // Already reading in these voices? A language the reading has no pick for
+  // is read in the server's default voice for it.
+  const before = { ...(job.voice ? { en: job.voice } : {}), ...job.voices };
+  const usual = { en: defaultVoice, zh: defaultZh };
+  if (Object.keys(chosen).every((language) => (before[language] || usual[language]) === chosen[language])) return;
   stopSample();
   player.pause();
   playing = false;
@@ -1334,27 +1451,28 @@ voice.addEventListener("change", async () => {
   stopHighlight();
   timings.clear();
   clearError();
-  $("statusLine").textContent = "CHANGING VOICE...";
+  $("statusLine").textContent = t("status.changingVoice");
 
   let response;
   try {
     response = await fetch(`/voice/${job.id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ voice: chosen })
+      body: JSON.stringify(defaultZh ? { voices: chosen } : { voice: chosen.en })
     });
   } catch (error) {
-    keepVoice(`Could not reach the server: ${error}`);
+    keepVoice(t("error.reach", { error }));
     return;
   }
   if (!response.ok) {
     const detail = await response.json().catch(() => ({ detail: response.statusText }));
-    keepVoice(detail.detail || "Could not change the voice.");
+    keepVoice(refusal(detail, "error.voice"));
     return;
   }
   const result = await response.json();
   renderFailed = false;
-  job.voice = chosen;
+  job.voice = chosen.en;
+  if (defaultZh) job.voices = chosen;
   rememberJob();
   if (!result.changed) { setStatus(); return; }
 
@@ -1366,7 +1484,9 @@ voice.addEventListener("change", async () => {
   player.removeAttribute("src");
   player.load();
   listenForParts();
-});
+}
+voice.addEventListener("change", changeVoice);
+$("voiceZh").addEventListener("change", changeVoice);
 
 /**
  * Keep the text across a refresh.
@@ -1458,7 +1578,7 @@ function setUpBookmark() {
   link.href = "javascript:" + encodeURIComponent(source);
   link.addEventListener("click", (event) => {
     event.preventDefault();
-    $("bookmarkHint").textContent = "DRAG IT, DO NOT CLICK IT. DROP IT ON YOUR BOOKMARKS BAR.";
+    $("bookmarkHint").textContent = t("bookmark.dontClick");
   });
   $("bookmarkBox").classList.remove("hidden");
 }
@@ -1509,12 +1629,12 @@ async function readCopied() {
     copied = (await navigator.clipboard.readText()).trim();
   } catch {
     // No clipboard on a plain-http address, or Chrome was told to block it.
-    problem("EARFUL WAS NOT ALLOWED TO SEE WHAT YOU COPIED. PASTE IT INTO THE TEXT BOX WITH CMD+V.");
+    problem(t("copied.denied"));
     $("inputBox").classList.remove("hidden");
     $("readerBox").classList.add("hidden");
     return;
   }
-  if (!copied) { problem("NOTHING IS COPIED YET. COPY THE TEXT FIRST, THEN PRESS THE BUTTON."); return; }
+  if (!copied) { problem(t("copied.empty")); return; }
   readNow(copied);
 }
 
@@ -1532,7 +1652,22 @@ for (const button of $("presets").children) {
   button.addEventListener("click", () => setSpeed(Number(button.dataset.speed)));
 }
 $("go").addEventListener("click", () => { if (!editing) speak(); });
-$("sample").addEventListener("click", sample);
+$("sample").addEventListener("click", () => sample($("sample"), voice));
+$("sampleZh").addEventListener("click", () => sample($("sampleZh"), $("voiceZh")));
+// Switch the screen between English and Chinese, and remember it.
+$("language").addEventListener("click", () => {
+  lang = lang === "zh" ? "en" : "zh";
+  try { localStorage.setItem(SAVED_LANGUAGE, lang); } catch { /* this visit only */ }
+  showLanguage();
+});
+function showLanguage() {
+  applyStrings();
+  fillVoices();
+  refreshCount();
+  paintLoop();
+  paintPhone();
+  if (job) setStatus();
+}
 $("toggle").addEventListener("click", toggle);
 $("loop").addEventListener("click", toggleLoop);
 $("prev").addEventListener("click", () => !editing && jumpTo(index - 1));
@@ -1578,6 +1713,7 @@ if (document.fonts && document.fonts.ready) {
 window.addEventListener("resize", measureDock);
 window.addEventListener("orientationchange", measureDock);
 
+showLanguage();
 loadVoices();
 let savedSpeed = null;
 try { savedSpeed = localStorage.getItem(SAVED_SPEED); } catch { /* default */ }
@@ -1591,6 +1727,12 @@ measureDock();
  * Only appears when the server is actually reachable from other devices;
  * offering a link that cannot be opened is worse than offering none.
  */
+function paintPhone() {
+  if (!phoneInfo) return;
+  const hint = phoneInfo.tunnel ? t("phone.anywhere") : t("phone.wifi");
+  $("phoneHint").textContent = phoneInfo.password ? t("phone.password", { hint }) : hint;
+}
+
 (async function showPhoneLink() {
   try {
     const response = await fetch("/phone");
@@ -1604,11 +1746,8 @@ measureDock();
     // A plain local address only works if the network lets devices talk to
     // each other, and plenty of office and guest networks do not. Saying so
     // up front beats a phone that cannot open the link for no visible reason.
-    const hint = phone.tunnel
-      ? "CARRY ON WHERE YOU LEFT OFF / SAME ADDRESS ALWAYS"
-      : "SAME WI-FI ONLY / BLOCKED ON SOME NETWORKS";
-    document.getElementById("phoneHint").textContent =
-      phone.password ? `${hint} / PASSWORD NEEDED` : hint;
+    phoneInfo = phone;
+    paintPhone();
   } catch { /* the link is a convenience, never a blocker */ }
 })();
 </script>

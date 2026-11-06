@@ -8,7 +8,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { JSDOM } = require("jsdom");
 
-const page = (name) => fs.readFileSync(path.join(__dirname, "..", name), "utf8");
+// The page with its words put in, as the server does.
+const strings = Object.fromEntries(
+  fs.readdirSync(path.join(__dirname, "..", "strings")).filter((f) => f.endsWith(".json")).sort()
+    .map((f) => [f.slice(0, -5), JSON.parse(fs.readFileSync(path.join(__dirname, "..", "strings", f), "utf8"))]));
+const page = (name) => fs.readFileSync(path.join(__dirname, "..", name), "utf8").replace(
+  '<script id="strings" type="application/json"></script>',
+  `<script id="strings" type="application/json">${JSON.stringify(strings).replace(/<\//g, "<\\/")}</script>`);
 
 const tick = (ms = 5) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -67,7 +73,7 @@ async function open(options = {}) {
     }
     if (url.startsWith("/voice/")) return reply(state.voiceAnswer, state.voiceStatus);
     if (url.startsWith("/words/")) return reply({ words: [] });
-    if (url === "/handoff") return reply({});
+    if (url === "/handoff") return reply({ waiting: true });
     return reply({ detail: "not found" }, 404);
   };
 
@@ -143,6 +149,7 @@ async function open(options = {}) {
       window.requestAnimationFrame = () => 1;
       window.cancelAnimationFrame = () => {};
       window.Element.prototype.scrollIntoView = () => {};
+      if (options.language) Object.defineProperty(window.navigator, "language", { value: options.language });
       for (const [key, value] of Object.entries(options.saved || {})) {
         window.localStorage.setItem(key, value);
       }
