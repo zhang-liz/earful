@@ -40,7 +40,7 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: ~/.cache/huggingface
-          key: kokoro-82m
+          key: kokoro-82m-and-zh
 
       - name: Start the server
         run: |
@@ -52,6 +52,9 @@ jobs:
 
       - name: Editor extension tests
         run: npm test --prefix editor-extension
+
+      - name: Chinese with the real voice
+        run: .venv/bin/python .github/checks/chinese.py
 
       - name: Show the server log
         if: failure()

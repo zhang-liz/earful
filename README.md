@@ -158,6 +158,15 @@ ahead of you.
   download file is deleted so it is rebuilt with the new audio.
 - FastAPI serves the page, streams progress over SSE, and serves each chunk
   with HTTP range support (browsers stall on media without it).
+- **Chinese.** Each part is checked for its language: Chinese when Chinese
+  characters are at least 30% of its letters. Chinese parts are read by
+  Kokoro's Chinese model (`Kokoro-82M-v1.1-zh`, loaded the first time Chinese
+  is read), which also reads English words inside Chinese and changes tones the
+  way speakers do. Earful cuts Chinese into short pieces itself, because Kokoro
+  drops anything past 510 sounds, and times each word from the model's length
+  for each sound. Apps can send `voices: {"en": ..., "zh": ...}` and
+  `language: "zh"` to `/speak`; an app that sends one `voice` gets the default
+  Mandarin voice for Chinese parts.
 
 ## Requirements
 

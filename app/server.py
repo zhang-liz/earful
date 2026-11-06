@@ -19,16 +19,43 @@ from urllib.parse import urlsplit
 import numpy as np
 import soundfile as sf
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
-from .engine import DEFAULT_VOICE, SAMPLE_RATE, VOICES, chunk, engine
+from .engine import (
+    DEFAULT_VOICE,
+    KNOWN_VOICES,
+    LANGUAGES,
+    SAMPLE_RATE,
+    VOICES,
+    chunk,
+    detect_language,
+    engine,
+    voice_for,
+    voice_language,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = ROOT / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 app = FastAPI(title="TTS Reader")
+
+
+class Refusal(HTTPException):
+    """A refused request, with a code each app shows in its own language.
+
+    `detail` stays English for older apps and for logs.
+    """
+
+    def __init__(self, status_code: int, code: str, detail: str) -> None:
+        super().__init__(status_code=status_code, detail=detail)
+        self.code = code
+
+
+@app.exception_handler(Refusal)
+async def refused(_request: Request, exc: Refusal) -> JSONResponse:
+    return JSONResponse({"detail": exc.detail, "code": exc.code}, status_code=exc.status_code)
 
 # No CORS headers on purpose. They would let any website open in the same
 # browser read this server's answers, including the text being read aloud. The
@@ -129,6 +156,10 @@ class Job:
     voice: str
     speed: float
     total: int
+    # The reader's voice for each language, and a language forced on every
+    # part (None: each part is read in the language it is written in).
+    voices: dict[str, str] = field(default_factory=dict)
+    language: str | None = None
     chunks: list[bytes] = field(default_factory=list)
     texts: list[str] = field(default_factory=list)
     words: list[list[dict]] = field(default_factory=list)
@@ -148,6 +179,8 @@ class Job:
         return {
             "id": self.id,
             "voice": self.voice,
+            "voices": dict(self.voices),
+            "language": self.language,
             "state": self.state,
             "done": len(self.chunks),
             "total": self.total,
@@ -220,7 +253,44 @@ def _wait_while_unwatched(job: Job, generation: int) -> bool:
 class SpeakRequest(BaseModel):
     text: str = Field(min_length=1)
     voice: str = DEFAULT_VOICE
+    # Newer apps send a voice per language and may force one language.
+    voices: dict[str, str] = Field(default_factory=dict)
+    language: str | None = None
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
+
+
+def _check_voice(voice: str) -> None:
+    if voice not in KNOWN_VOICES:
+        # Without this the engine tries to download a voice file named after
+        # whatever was sent and fails with an unhelpful 404 from the model host.
+        raise Refusal(400, "unknown_voice", f"Unknown voice: {voice!r}")
+
+
+def _picks(voice: str | None, voices: dict[str, str]) -> dict[str, str]:
+    """The voice for each language, from an older app's one voice and a newer app's map."""
+    picks: dict[str, str] = {}
+    if voice:
+        _check_voice(voice)
+        picks[voice_language(voice)] = voice
+    for language, pick in voices.items():
+        _check_voice(pick)
+        if language not in LANGUAGES or voice_language(pick) != language:
+            raise Refusal(400, "unknown_voice", f"{pick!r} does not read {language!r}")
+        picks[language] = pick
+    return picks
+
+
+def _check_language(language: str | None) -> str | None:
+    if language in (None, "", "auto"):
+        return None
+    if language not in LANGUAGES:
+        raise Refusal(400, "unknown_language", f"Unknown language: {language!r}")
+    return language
+
+
+def _part_voice(job: "Job", body: str) -> str:
+    """The voice for one part: its language's pick."""
+    return voice_for(job.language or detect_language(body), job.voices)
 
 
 def _to_wav(audio: np.ndarray) -> bytes:
@@ -234,7 +304,7 @@ def _render_one(job: Job, body: str) -> tuple[np.ndarray, list[dict]]:
     audio_parts: list[np.ndarray] = []
     words: list[dict] = []
     offset = 0.0
-    for segment in engine.stream(body, voice=job.voice, speed=job.speed):
+    for segment in engine.stream(body, voice=_part_voice(job, body), speed=job.speed):
         audio_parts.append(segment.audio)
         words.extend(
             {"t": w.text, "s": round(w.start + offset, 3), "e": round(w.end + offset, 3)}
@@ -301,30 +371,36 @@ def icon() -> FileResponse:
 def voices() -> dict:
     return {
         "default": DEFAULT_VOICE,
+        "languages": [
+            {"id": lang.id, "name": lang.name, "default": lang.default_voice}
+            for lang in LANGUAGES.values()
+        ],
         "voices": [
-            {"id": vid, "label": label, "accent": "US" if lang == "a" else "UK"}
-            for lang, entries in VOICES.items()
-            for vid, label in entries
+            {
+                "id": v.id,
+                "label": v.labels["en"],       # what older apps show
+                "labels": v.labels,
+                "language": v.language,
+                "accent": v.accent,
+            }
+            for v in VOICES
         ],
     }
-
-
-KNOWN_VOICES = {vid for entries in VOICES.values() for vid, _ in entries}
 
 
 @app.post("/speak")
 def speak(request: SpeakRequest) -> dict:
     chunks = chunk(request.text)
     if not chunks:
-        raise HTTPException(status_code=400, detail="No readable text.")
-    if request.voice not in KNOWN_VOICES:
-        # Without this the engine tries to download a voice file named after
-        # whatever was sent and fails with an unhelpful 404 from the model host.
-        raise HTTPException(status_code=400, detail=f"Unknown voice: {request.voice!r}")
+        raise Refusal(400, "no_text", "No readable text.")
+    picks = _picks(request.voice, request.voices)
+    language = _check_language(request.language)
 
     job = Job(
         id=secrets.token_hex(16),
         voice=request.voice,
+        voices=picks,
+        language=language,
         # Render at a fixed 1.0 and let the browser change tempo live, so the
         # speed slider never forces a re-render.
         speed=1.0,
@@ -339,28 +415,30 @@ def speak(request: SpeakRequest) -> dict:
 
 
 class RevoiceAllRequest(BaseModel):
-    voice: str
+    voice: str | None = None
+    voices: dict[str, str] = Field(default_factory=dict)
 
 
 @app.post("/voice/{job_id}")
 def change_voice(job_id: str, request: RevoiceAllRequest) -> dict:
-    """Read the whole article again in a different voice."""
+    """Read the article again with other voices. Parts whose voice stays keep their audio."""
     job = JOBS.get(job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Unknown job.")
-    if request.voice not in KNOWN_VOICES:
-        raise HTTPException(status_code=400, detail=f"Unknown voice: {request.voice!r}")
-    if request.voice == job.voice:
-        return {"voice": job.voice, "changed": False}
+        raise Refusal(404, "unknown_job", "Unknown job.")
+    picks = {**job.voices, **_picks(request.voice, request.voices)}
+    new = [v for v in picks.values() if v not in job.voices.values()]
+    if picks == job.voices:
+        return {"voice": job.voice, "voices": job.voices, "changed": False}
 
     # Most voices download on first use. Find out now if that fails, while the
     # audio for the current voice is still here to go back to.
     try:
-        list(engine.stream("Hello.", voice=request.voice, speed=job.speed))
+        for voice in new:
+            list(engine.stream(LANGUAGES[voice_language(voice)].sample, voice=voice, speed=job.speed))
     except Exception as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="Could not load that voice. It may need the internet the first time.",
+        raise Refusal(
+            503, "voice_unavailable",
+            "Could not load that voice. It may need the internet the first time.",
         ) from exc
 
     _touch(job_id)
@@ -370,7 +448,18 @@ def change_voice(job_id: str, request: RevoiceAllRequest) -> dict:
         job.generation += 1
         generation = job.generation
         texts = list(job.texts)
-        job.voice = request.voice
+        old_chunks, old_words = list(job.chunks), list(job.words)
+        # A part keeps its audio when its voice is the same as before.
+        kept: list[bytes | None] = []
+        kept_words: list[list[dict] | None] = []
+        for i, body in enumerate(texts):
+            before = _part_voice(job, body)
+            same = i < len(old_chunks) and voice_for(job.language or detect_language(body), picks) == before
+            kept.append(old_chunks[i] if same else None)
+            kept_words.append(old_words[i] if same else None)
+        job.voices = picks
+        if request.voice:
+            job.voice = request.voice
         # Drop the rendered audio so the reader shows every part as pending
         # while the new voice is produced, part by part, as it was at first.
         job.chunks.clear()
@@ -381,9 +470,9 @@ def change_voice(job_id: str, request: RevoiceAllRequest) -> dict:
 
     (OUTPUT_DIR / f"{job_id}.wav").unlink(missing_ok=True)
     threading.Thread(
-        target=_render_job, args=(job, texts, None, None, generation), daemon=True
+        target=_render_job, args=(job, texts, kept, kept_words, generation), daemon=True
     ).start()
-    return {"voice": job.voice, "changed": True, "total": job.total}
+    return {"voice": job.voice, "voices": job.voices, "changed": True, "total": job.total}
 
 
 class RewriteRequest(BaseModel):
@@ -395,11 +484,11 @@ def rewrite(job_id: str, request: RewriteRequest) -> dict:
     """Replace the article, re-speaking only the parts whose text changed."""
     job = JOBS.get(job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Unknown job.")
+        raise Refusal(404, "unknown_job", "Unknown job.")
 
     parts = chunk(request.text)
     if not parts:
-        raise HTTPException(status_code=400, detail="No readable text.")
+        raise Refusal(400, "no_text", "No readable text.")
 
     _touch(job_id)
     with job.lock:
@@ -443,7 +532,7 @@ def progress_once(job_id: str) -> dict:
     """
     job = JOBS.get(job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Unknown job.")
+        raise Refusal(404, "unknown_job", "Unknown job.")
     job.seen = time.monotonic()   # polled by whoever is following it
     # The parts are included so a page coming back after a refresh shows the
     # text as it is now, not as it was when the page last saved it.
@@ -454,7 +543,7 @@ def progress_once(job_id: str) -> dict:
 def progress(job_id: str) -> StreamingResponse:
     job = JOBS.get(job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Unknown job.")
+        raise Refusal(404, "unknown_job", "Unknown job.")
 
     listener: queue.Queue = queue.Queue()
     with job.lock:
@@ -503,10 +592,10 @@ def _range_response(data: bytes, range_header: str | None) -> Response:
             start = max(len(data) - int(end_text), 0)
             end = len(data) - 1
     except ValueError:
-        raise HTTPException(status_code=416, detail="Bad range.") from None
+        raise Refusal(416, "bad_range", "Bad range.") from None
 
     if start >= len(data):
-        raise HTTPException(status_code=416, detail="Range out of bounds.")
+        raise Refusal(416, "bad_range", "Range out of bounds.")
     end = min(end, len(data) - 1)
     body = data[start : end + 1]
     headers["Content-Range"] = f"bytes {start}-{end}/{len(data)}"
@@ -519,10 +608,10 @@ def chunk_audio(job_id: str, index: int, request: Request) -> Response:
     """One rendered chunk, fetched by the player as soon as it exists."""
     job = JOBS.get(job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Unknown job.")
+        raise Refusal(404, "unknown_job", "Unknown job.")
     with job.lock:
         if index >= len(job.chunks):
-            raise HTTPException(status_code=404, detail="Chunk not ready.")
+            raise Refusal(404, "not_ready", "Chunk not ready.")
         data = job.chunks[index]
     _touch(job_id)
     return _range_response(data, request.headers.get("range"))
@@ -533,11 +622,11 @@ def chunk_words(job_id: str, index: int) -> dict:
     """Word timings for one part, so the reader can follow along."""
     job = JOBS.get(job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Unknown job.")
+        raise Refusal(404, "unknown_job", "Unknown job.")
     with job.lock:
         job.seen = time.monotonic()
         if index >= len(job.words):
-            raise HTTPException(status_code=404, detail="Part not ready.")
+            raise Refusal(404, "not_ready", "Part not ready.")
         return {"index": index, "words": job.words[index]}
 
 
@@ -561,7 +650,7 @@ def set_handoff(request: HandoffRequest) -> dict:
     """Record the spot a reader has reached, for another device to resume."""
     job = JOBS.get(request.job)
     if job is None:
-        raise HTTPException(status_code=404, detail="Unknown job.")
+        raise Refusal(404, "unknown_job", "Unknown job.")
 
     job.seen = time.monotonic()   # sent about once a second while playing
     global HANDOFF
@@ -756,9 +845,9 @@ def download(job_id: str) -> FileResponse:
     """Join every chunk into one file, for keeping."""
     job = JOBS.get(job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Unknown job.")
+        raise Refusal(404, "unknown_job", "Unknown job.")
     if job.state != "ready":
-        raise HTTPException(status_code=409, detail="Still reading.")
+        raise Refusal(409, "still_reading", "Still reading.")
 
     path = OUTPUT_DIR / f"{job_id}.wav"
     if not path.exists():
@@ -778,9 +867,13 @@ def download(job_id: str) -> FileResponse:
 @app.post("/preview")
 def preview(request: SpeakRequest) -> Response:
     """Short sample of one voice, rendered straight to a WAV in memory."""
-    if request.voice not in KNOWN_VOICES:
-        raise HTTPException(status_code=400, detail=f"Unknown voice: {request.voice!r}")
-    audio = engine.synthesize(request.text[:300], voice=request.voice, speed=1.0)
+    _check_voice(request.voice)
+    language = voice_language(request.voice)
+    text = request.text[:300]
+    # A Chinese voice says a Chinese sample, whatever sample the app sent.
+    if detect_language(text) != language:
+        text = LANGUAGES[language].sample
+    audio = engine.synthesize(text, voice=request.voice, speed=1.0)
     data = _to_wav(audio)
     return Response(
         content=data,
