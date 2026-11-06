@@ -102,6 +102,8 @@
         .status { color: #a09c94; white-space: nowrap; overflow: hidden;
                   text-overflow: ellipsis; flex: 1; min-width: 90px; }
         .close { margin-left: 2px; }
+        [hidden] { display: none !important; }
+        button.open { background: #f2b33d; color: #0b0a11; white-space: nowrap; }
         .speeds { display: flex; gap: 5px; align-items: center; }
         .rate { min-width: 52px; }
         .grip { cursor: grab; color: #6f6880; padding: 0 2px; user-select: none; touch-action: none; }
@@ -121,6 +123,7 @@
           <button id="faster" title="${t("playerFaster")}">+</button>
         </span>
         <span class="status" id="status" title="${t("playerHint")}">${t("statusGettingReady")}</span>
+        <button class="open" id="openApp" hidden>${t("playerOpenApp")}</button>
         <button class="full" id="settings" title="${t("playerSettings")}">&#9881;</button>
         <button id="size" title="${t("playerSmaller")}">&#9662;</button>
         <button class="close" id="close" title="${t("playerClose")}">&#10005;</button>
@@ -141,6 +144,7 @@
     $("prev").addEventListener("click", () => jumpTo(index - 1));
     $("next").addEventListener("click", () => jumpTo(index + 1));
     $("close").addEventListener("click", stop);
+    $("openApp").addEventListener("click", openApp);
     $("settings").addEventListener("click", () => {
       chrome.runtime.sendMessage({ type: "open-settings" }).catch(() => {});
     });
@@ -572,6 +576,7 @@
     stopListening();
     clearHighlight();
     job = null; ready = 0; index = 0; playing = false; started = false; waiting = false;
+    opening += 1;   // stop waiting for the app to open
     timings.clear();
     sourceRanges = [];
     readingSelection = "";
@@ -722,9 +727,57 @@
     return body;
   }
 
+  /* ---------------- opening the app ---------------- */
+
+  // The Mac app answers this link: it starts the server without opening a page.
+  const APP_LINK = "earful://wake";
+  let lastRead = null;   // what to read once the app is open
+  let opening = 0;       // bumped to cancel a wait for the app
+
+  /** Is the server the app on this computer, which a link can open? */
+  const onThisComputer = () => /^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(config.server);
+
+  function showOpenApp(on) {
+    const button = ui?.root.getElementById("openApp");
+    if (!button) return;
+    if (on) button.removeAttribute("hidden");
+    else button.setAttribute("hidden", "");
+  }
+
+  /**
+   * Open the Earful app, then read what was asked once it answers.
+   *
+   * Chrome asks once whether to open Earful from this site; the reader can
+   * tick "always allow" there.
+   */
+  async function openApp() {
+    if (!lastRead) return;
+    const link = document.createElement("a");
+    link.href = APP_LINK;
+    ui.root.append(link);
+    link.click();
+    link.remove();
+
+    const wait = ++opening;
+    ui.setStatus(t("statusOpening"));
+    for (let tries = 0; tries < 90; tries++) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (wait !== opening) return;   // stopped, or another read began
+      try {
+        if ((await api("/voices")).ok) {
+          const { text, searchFrom } = lastRead;
+          read(text, searchFrom);
+          return;
+        }
+      } catch { /* not open yet */ }
+    }
+    if (wait === opening) ui?.setStatus(t("statusDidNotOpen"));
+  }
+
   async function read(text, searchFrom = 0) {
     if (!text.trim()) return;
     stop();
+    lastRead = { text, searchFrom };
     buildUI();
     ui.setStatus(t("statusGettingReady"));
     pageIndex = indexText(document.body);
@@ -737,7 +790,12 @@
         body: JSON.stringify(speakBody(text)),
       });
     } catch (error) {
-      ui.setStatus(t("statusCannotReach", { server: config.server }));
+      if (onThisComputer()) {
+        ui.setStatus(t("statusAppClosed"));
+        showOpenApp(true);
+      } else {
+        ui.setStatus(t("statusCannotReach", { server: config.server }));
+      }
       return;
     }
     if (!response.ok) {

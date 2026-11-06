@@ -2,7 +2,9 @@
 # Start or stop the server for the Earful Mac app.
 #
 #   earful.sh start   start the server if it is not running, then open the page
-#   earful.sh stop    stop the server, but only if `start` started it
+#   earful.sh wake    start the server if it is not running, open no page
+#                     (the earful:// link the browser extension follows)
+#   earful.sh stop    stop the server, but only if it was started here
 #   earful.sh serve   run the server here, in the foreground (for checks)
 #
 # Two kinds of app use this script:
@@ -42,7 +44,7 @@ serve() {
   NO_OPEN=1 exec ./run.sh
 }
 
-start() {
+wake() {
   if ! up; then
     mkdir -p "$(dirname "$LOG")" "$(dirname "$PIDFILE")"
     nohup "$0" serve >>"$LOG" 2>&1 &
@@ -53,6 +55,10 @@ start() {
       sleep 1
     done
   fi
+}
+
+start() {
+  wake
   open "$URL"
 }
 
@@ -67,7 +73,8 @@ stop() {
 
 case "${1:-}" in
   start) start ;;
+  wake) wake ;;
   stop) stop ;;
   serve) serve ;;
-  *) echo "usage: $0 start|stop|serve" >&2; exit 2 ;;
+  *) echo "usage: $0 start|wake|stop|serve" >&2; exit 2 ;;
 esac

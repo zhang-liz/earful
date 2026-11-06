@@ -48,6 +48,8 @@ PLIST="$WORK/Earful.app/Contents/Info.plist"
 plutil -replace CFBundleIdentifier -string "local.earful" "$PLIST"
 plutil -replace CFBundleName -string "Earful" "$PLIST"
 plutil -remove CFBundleIconName "$PLIST" 2>/dev/null || true
+# earful:// links open the app (the browser extension's "Open Earful").
+plutil -replace CFBundleURLTypes -json '[{"CFBundleURLName": "Earful", "CFBundleURLSchemes": ["earful"]}]' "$PLIST"
 if [[ -n "$BUNDLE" ]]; then
   VERSION="${VERSION:-$(git describe --tags --exact-match 2>/dev/null || echo 0.0.0)}"
   plutil -replace CFBundleShortVersionString -string "${VERSION#v}" "$PLIST"
