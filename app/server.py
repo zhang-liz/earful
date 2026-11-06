@@ -141,6 +141,8 @@ class Job:
     # Bumped whenever a new render supersedes one in flight; the older thread
     # sees the change and stops instead of writing stale audio.
     generation: int = 0
+    # When a reader last asked about this job. See _wait_while_unwatched.
+    seen: float = field(default_factory=time.monotonic)
 
     def snapshot(self) -> dict:
         return {
@@ -191,6 +193,28 @@ def _touch(job_id: str) -> None:
     with JOBS_LOCK:
         if job_id in JOBS:
             JOBS[job_id] = JOBS.pop(job_id)
+            JOBS[job_id].seen = time.monotonic()
+
+
+# Every reading shares one voice engine, a part at a time. A reading nobody
+# follows any more, its tab closed or left, would keep taking turns and slow
+# the one being listened to. After this long unasked about it waits instead.
+UNWATCHED_SECONDS = 30.0
+
+
+def _wait_while_unwatched(job: Job, generation: int) -> bool:
+    """Hold a render while nobody follows the job. False if it was replaced.
+
+    It only waits, never gives up: a phone carrying on, or the page coming
+    back, asks about the job again and the render picks up where it was.
+    """
+    while (
+        job.generation == generation
+        and not job.listeners
+        and time.monotonic() - job.seen > UNWATCHED_SECONDS
+    ):
+        time.sleep(0.5)
+    return job.generation == generation
 
 
 class SpeakRequest(BaseModel):
@@ -236,7 +260,7 @@ def _render_job(
     """
     try:
         for i, body in enumerate(texts):
-            if job.generation != generation:
+            if not _wait_while_unwatched(job, generation):
                 return          # superseded by a newer edit or voice change
             reuse = kept[i] if kept else None
             if reuse is not None:
@@ -420,6 +444,7 @@ def progress_once(job_id: str) -> dict:
     job = JOBS.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job.")
+    job.seen = time.monotonic()   # polled by whoever is following it
     # The parts are included so a page coming back after a refresh shows the
     # text as it is now, not as it was when the page last saved it.
     return {**job.snapshot(), "texts": job.texts}
@@ -451,6 +476,7 @@ def progress(job_id: str) -> StreamingResponse:
             with job.lock:
                 if listener in job.listeners:
                     job.listeners.remove(listener)
+            job.seen = time.monotonic()   # the wait for a reader starts now
 
     return StreamingResponse(
         events(),
@@ -509,6 +535,7 @@ def chunk_words(job_id: str, index: int) -> dict:
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job.")
     with job.lock:
+        job.seen = time.monotonic()
         if index >= len(job.words):
             raise HTTPException(status_code=404, detail="Part not ready.")
         return {"index": index, "words": job.words[index]}
@@ -536,6 +563,7 @@ def set_handoff(request: HandoffRequest) -> dict:
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job.")
 
+    job.seen = time.monotonic()   # sent about once a second while playing
     global HANDOFF
     with HANDOFF_LOCK:
         HANDOFF = {
