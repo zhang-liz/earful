@@ -1,0 +1,45 @@
+name: Bug report · 报告问题
+description: Something does not work. · 有地方不能正常使用。
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        You can write in English or Chinese. · 可以用中文或英文写。
+        A security problem? Do not post it here. See SECURITY.md. · 安全问题请不要发在这里，见 SECURITY.md。
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where? · 在哪里？
+      options:
+        - Mac app · Mac 应用
+        - Chrome extension · Chrome 扩展
+        - Web page · 网页
+        - Phone · 手机
+        - VS Code extension · VS Code 扩展
+        - Other · 其他
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened? · 发生了什么？
+      description: What did you do, what did you expect, and what happened? · 你做了什么？你希望看到什么？实际看到了什么？
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Earful version · Earful 版本
+      placeholder: "1.0.0"
+  - type: input
+    id: system
+    attributes:
+      label: Mac or browser version · Mac 或浏览器版本
+      placeholder: "macOS 15.5, Chrome 142"
+  - type: textarea
+    id: log
+    attributes:
+      label: Log (optional) · 日志（可选）
+      description: Mac app log is in ~/Library/Logs/Earful.log · Mac 应用的日志在 ~/Library/Logs/Earful.log
+      render: text

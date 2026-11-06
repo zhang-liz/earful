@@ -15,6 +15,8 @@ rm -f "$OUT"
 zip -q -r -X "$OUT" . \
   -x 'test/*' 'store/*' 'node_modules/*' 'package.json' 'package-lock.json' \
      'check-manifest.py' 'pack.sh' '.*' '*/.*'
+# Earful's license goes in too.
+zip -q -j -X "$OUT" ../LICENSE
 
 CHECK="$(mktemp -d)"
 trap 'rm -rf "$CHECK"' EXIT

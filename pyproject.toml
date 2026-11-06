@@ -3,6 +3,8 @@ name = "tts-reader"
 version = "0.1.0"
 description = "Local text-to-speech reader using Kokoro"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "Liz Zhang", email = "hello.liz.zhang@gmail.com" }
 ]

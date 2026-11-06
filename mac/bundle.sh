@@ -36,6 +36,9 @@ rm -rf "$SITE/torch/include" "$SITE"/pip "$SITE"/pip-*.dist-info
 mkdir -p "$RES/earful/app"
 cp app/*.py app/*.html app/icon.png "$RES/earful/app/"
 cp -R app/strings "$RES/earful/app/strings"
+# The licenses: Earful's own, and those of the parts it carries.
+cp LICENSE THIRD_PARTY_NOTICES.md "$RES/"
+cp -R licenses "$RES/licenses"
 
 # The models and voices.
 HF_HOME="$RES/hf" PYTHONPATH="$RES/earful" "$PY" mac/fetch_models.py
