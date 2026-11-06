@@ -2,14 +2,80 @@
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
+import sys
+import tempfile
 import threading
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Callable, Iterator
 
 import numpy as np
 
 SAMPLE_RATE = 24000
+
+# espeak-ng (English sounds) cannot use a data folder whose real path is
+# longer than this. It falls back to a folder that does not exist and ends the
+# whole process. A deep clone, or a downloaded Mac app that macOS runs from its
+# hidden App Translocation folder, gets a longer path than this.
+ESPEAK_PATH_LIMIT = 159
+
+
+def _cache_folders() -> list[Path]:
+    """Places to keep a copy of espeak's data, shortest-lived last."""
+    home = Path.home()
+    if sys.platform == "darwin":
+        first = home / "Library" / "Caches" / "Earful"
+    else:
+        first = Path(os.environ.get("XDG_CACHE_HOME") or home / ".cache") / "earful"
+    return [first, Path(tempfile.gettempdir()) / f"earful-{os.getuid()}"]
+
+
+def use_short_espeak_data() -> None:
+    """Point espeak at a copy of its data on a short path, when it needs one.
+
+    The copy is made once per espeakng_loader version (about 19 MB), then
+    reused. Nothing changes when the installed path is short enough.
+    """
+    import espeakng_loader
+
+    data = Path(espeakng_loader.get_data_path()).resolve()
+    if len(str(data)) <= ESPEAK_PATH_LIMIT:
+        return
+    from importlib.metadata import version
+
+    stamp = f"espeakng-loader {version('espeakng-loader')}"
+    for folder in _cache_folders():
+        target = (folder / "espeak-ng-data").resolve()
+        if len(str(target)) > ESPEAK_PATH_LIMIT:
+            continue
+        marker = folder / "espeak-ng-data.version"
+        try:
+            if not (target.is_dir() and marker.exists() and marker.read_text() == stamp):
+                folder.mkdir(parents=True, exist_ok=True)
+                # Copy beside it, then swap in, so a half-made copy is never used.
+                staging = Path(tempfile.mkdtemp(dir=folder))
+                shutil.copytree(data, staging / "espeak-ng-data")
+                shutil.rmtree(target, ignore_errors=True)
+                try:
+                    (staging / "espeak-ng-data").rename(target)
+                except OSError:
+                    # Another server made the same copy first; theirs will do.
+                    if not target.is_dir():
+                        raise
+                finally:
+                    shutil.rmtree(staging, ignore_errors=True)
+                marker.write_text(stamp)
+        except OSError:
+            continue
+        espeakng_loader.get_data_path = lambda path=str(target): path
+        espeak = sys.modules.get("misaki.espeak")
+        if espeak is not None:   # already imported with the long path
+            espeak.EspeakWrapper.set_data_path(str(target))
+        return
+
 
 @dataclass(frozen=True)
 class Language:
@@ -286,6 +352,7 @@ class Engine:
     def pipeline(self, lang: str):
         with self._lock:
             if lang not in self._pipelines:
+                use_short_espeak_data()
                 from kokoro import KPipeline
 
                 if lang == "z":
