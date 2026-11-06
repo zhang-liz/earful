@@ -36,8 +36,10 @@ from .engine import (
 )
 
 ROOT = Path(__file__).resolve().parent.parent
-OUTPUT_DIR = ROOT / "output"
-OUTPUT_DIR.mkdir(exist_ok=True)
+# Finished readings saved as one file. The Mac app sets EARFUL_OUTPUT_DIR,
+# because nothing may be written inside an app once it is signed.
+OUTPUT_DIR = Path(os.environ.get("EARFUL_OUTPUT_DIR") or ROOT / "output")
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="TTS Reader")
 

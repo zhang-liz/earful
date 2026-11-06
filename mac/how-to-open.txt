@@ -1,0 +1,38 @@
+如何打开 Earful
+================
+
+1. 把 Earful 拖到右边的“应用程序”文件夹。
+2. 打开“应用程序”文件夹，双击 Earful。
+   第一次会弹出提示，说 Apple 无法验证 Earful。
+   这是因为 Earful 没有向苹果付费登记，不是因为它有问题。点“完成”（不要点“移到废纸篓”）。
+3. 打开“系统设置” >“隐私与安全性”，一直往下滚动。
+   在“安全性”下面，会看到一行说 Earful 被阻止了。点旁边的“仍要打开”。
+4. 输入你的 Mac 登录密码，再点一次“仍要打开”。
+5. 以后直接双击 Earful 就能用，不用再做这些步骤。
+
+Earful 打开后，浏览器会自动打开朗读页面。
+Earful 在你自己的电脑上朗读，不需要联网，你的文字不会发到任何地方。
+程序坞里的 Earful 图标亮着时，它就在工作。退出 Earful，它就停止。
+
+需要 Apple 芯片（M1 或更新）的 Mac，macOS 13 或更新版本。
+
+
+How to open Earful
+==================
+
+1. Drag Earful to the Applications folder on the right.
+2. Open the Applications folder and double-click Earful.
+   The first time, macOS says Apple could not verify Earful. This is
+   because Earful is not registered with Apple, which costs money. It is
+   not a problem with Earful. Click "Done" (not "Move to Trash").
+3. Open System Settings > Privacy & Security, and scroll down.
+   Under "Security", a line says Earful was blocked.
+   Click "Open Anyway" next to it.
+4. Type your Mac password, and click "Open Anyway" again.
+5. From then on, double-click Earful to use it. No more steps.
+
+When Earful opens, your browser opens the reading page.
+Earful reads on your own computer, with no internet. Your text goes nowhere.
+While the Earful icon in the Dock is lit, it is working. Quit Earful to stop it.
+
+Needs a Mac with Apple silicon (M1 or later) and macOS 13 or later.
