@@ -28,7 +28,7 @@ async function ensureContentScript(tabId) {
     return true;
   } catch {
     try {
-      await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
+      await chrome.scripting.executeScript({ target: { tabId }, files: ["remote-audio.js", "content.js"] });
       await chrome.scripting.insertCSS({ target: { tabId }, files: ["content.css"] });
       return true;
     } catch (error) {
@@ -97,5 +97,67 @@ chrome.runtime.onMessage.addListener((message, _sender, respond) => {
     });
     return true;   // respond asynchronously
   }
+  return false;
+});
+
+/* ---------------- the hidden page that makes the sound ---------------- */
+
+// See remote-audio.js for why the audio does not play in the page itself.
+
+let creating = null;
+
+/** Open the hidden sound page, unless it is open already. */
+function ensureOffscreen() {
+  creating ||= (async () => {
+    if (await chrome.offscreen.hasDocument()) return;
+    await chrome.offscreen.createDocument({
+      url: "offscreen.html",
+      reasons: ["AUDIO_PLAYBACK"],
+      justification: "Plays the page being read aloud.",
+    });
+  })().finally(() => { creating = null; });
+  return creating;
+}
+
+const readers = new Map();   // owner id -> the port to that page's player
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== "earful-audio") return;
+  // Random, so ids from before a worker restart never point at a new page.
+  const owner = crypto.randomUUID();
+  readers.set(owner, port);
+
+  // One at a time and in order: "play" must not overtake the "src" before it.
+  let queue = Promise.resolve();
+  port.onMessage.addListener((message) => {
+    queue = queue.then(ensureOffscreen).then(() => {
+      const answer = chrome.runtime.sendMessage({ ...message, to: "offscreen", owner });
+      if (!message.call) return answer.catch(() => {});
+      // Not awaited: a play answers only once sound starts, and a pause sent
+      // meanwhile must not wait behind it.
+      answer
+        .then((reply) => reply || {}, () => ({ error: "EarfulOffscreen" }))
+        .then((reply) => {
+          try { port.postMessage({ reply: message.call, error: reply.error }); } catch { /* page gone */ }
+        });
+    }).catch((error) => {
+      console.warn("Earful: cannot play.", error);
+      if (message.call) {
+        try { port.postMessage({ reply: message.call, error: "EarfulOffscreen" }); } catch { /* page gone */ }
+      }
+    });
+  });
+
+  // The page was closed or left: stop its reading rather than talk to no one.
+  port.onDisconnect.addListener(() => {
+    readers.delete(owner);
+    chrome.runtime.sendMessage({ to: "offscreen", op: "gone", owner }).catch(() => {});
+  });
+});
+
+// The hidden page's events, passed on to the page that owns the audio.
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.type !== "audio-event") return false;
+  try { readers.get(message.owner)?.postMessage(message); } catch { /* page gone */ }
   return false;
 });

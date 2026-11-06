@@ -22,7 +22,9 @@
   // Where each part's text sits in the page, so words can be lit in place.
   let sourceRanges = [];
 
-  const player = new Audio();
+  // Played in the extension's hidden page (remote-audio.js): most pages do
+  // not let their own audio load from this machine's server.
+  const player = new (globalThis.EarfulAudio || Audio)();
   player.preservesPitch = true;
   player.mozPreservesPitch = true;
   player.webkitPreservesPitch = true;
@@ -341,6 +343,8 @@
     attempt.then(() => {
       const was = player.currentTime;
       setTimeout(() => {
+        // Paused on purpose meanwhile: that is not the browser refusing.
+        if (!playing) return;
         if (player.paused || player.currentTime === was) blocked();
       }, 600);
     }).catch((error) => {
