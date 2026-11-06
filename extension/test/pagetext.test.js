@@ -122,3 +122,8 @@ test("the player's own controls are never read back", async () => {
   assert.strictEqual(seen.length, 2);
   assert.strictEqual(seen[0], seen[1], "the second reading should be the same text");
 });
+
+test("an empty <main> falls back to the text elsewhere on the page", async () => {
+  const text = await sentText(`<main></main><div><p>The story sits outside main.</p></div>`);
+  assert.match(text || "", /story sits outside main/);
+});

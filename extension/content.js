@@ -596,7 +596,24 @@
       const text = readable(node);
       if (text.length > 1) { parts.push(text); taken.push(node); }
     }
-    return parts.join("\n\n") || readable(candidate);
+    return parts.join("\n\n") || readable(candidate) ||
+      // An empty <main>, with the text elsewhere on the page.
+      (candidate === document.body ? "" : readable(document.body));
+  }
+
+  /**
+   * What this frame could read, for the background worker to choose a frame.
+   *
+   * The script runs in every frame of a page, and some pages keep all their
+   * text in one: a Claude artifact does. A frame too small to see is not
+   * where anyone is reading, whatever it holds.
+   */
+  function measure() {
+    return {
+      page: pageText().length,
+      selection: (selectionInfo()?.text || "").length,
+      seen: innerWidth >= 200 && innerHeight >= 150,
+    };
   }
 
   /** One block's text, with any code inside it dropped. */
@@ -610,6 +627,12 @@
 
   chrome.runtime.onMessage.addListener((message, _sender, respond) => {
     if (message.type === "ping") { respond({ ok: true }); return false; }
+    if (message.type === "measure") {
+      chrome.runtime.sendMessage({ type: "measured", nonce: message.nonce, result: measure() })
+        .catch(() => { /* the worker restarted; it asks again next time */ });
+      respond({ ok: true });
+      return false;
+    }
     if (message.settings) config = { ...config, ...message.settings };
 
     if (message.type === "read") {
@@ -620,7 +643,9 @@
       if (info) read(info.text, info.from);
       else { buildUI(); ui.setStatus("Select some text first."); }
     } else if (message.type === "read-page") {
-      read(pageText(), 0);
+      const text = pageText();
+      if (text) read(text, 0);
+      else { buildUI(); ui.setStatus("Found nothing to read on this page."); }
     } else if (message.type === "toggle") {
       toggle();
     } else if (message.type === "stop") {

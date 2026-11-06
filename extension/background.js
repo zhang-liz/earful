@@ -20,6 +20,22 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
+// The content script runs in every frame, because some pages keep their text
+// in one: a Claude artifact keeps all of it in a frame from another site. Each
+// command goes to the frame it is about.
+
+async function inject(tabId) {
+  const files = { js: ["remote-audio.js", "content.js"], css: ["content.css"] };
+  try {
+    await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: files.js });
+    await chrome.scripting.insertCSS({ target: { tabId, allFrames: true }, files: files.css });
+  } catch {
+    // Frames from other sites may be off limits; the page itself is enough.
+    await chrome.scripting.executeScript({ target: { tabId }, files: files.js });
+    await chrome.scripting.insertCSS({ target: { tabId }, files: files.css });
+  }
+}
+
 // The content script is declared for every page, but a tab open from before
 // the extension loaded has no copy of it yet. Inject on demand.
 async function ensureContentScript(tabId) {
@@ -28,8 +44,7 @@ async function ensureContentScript(tabId) {
     return true;
   } catch {
     try {
-      await chrome.scripting.executeScript({ target: { tabId }, files: ["remote-audio.js", "content.js"] });
-      await chrome.scripting.insertCSS({ target: { tabId }, files: ["content.css"] });
+      await inject(tabId);
       return true;
     } catch (error) {
       console.warn("Earful: cannot run on this page.", error);
@@ -38,21 +53,80 @@ async function ensureContentScript(tabId) {
   }
 }
 
-async function send(tabId, message) {
-  if (!(await ensureContentScript(tabId))) return;
+// Frames answering a "measure", by the request they answer.
+const measuring = new Map();
+
+/**
+ * What each frame in the tab could read: [{ frameId, page, selection, seen }].
+ *
+ * Every frame hears the question and answers separately, with its frame id.
+ * Asking by message needs no permission for the sites the frames come from.
+ */
+async function measureFrames(tabId) {
+  if (!(await ensureContentScript(tabId))) return [];
+  const nonce = crypto.randomUUID();
+  const found = [];
+  measuring.set(nonce, found);
   try {
-    await chrome.tabs.sendMessage(tabId, { ...message, settings: await settings() });
+    await chrome.tabs.sendMessage(tabId, { type: "measure", nonce });
+    await new Promise((resolve) => setTimeout(resolve, 200));   // the others
+  } catch (error) {
+    console.warn("Earful:", error);
+  } finally {
+    measuring.delete(nonce);
+  }
+  return found;
+}
+
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (message.type !== "measured") return false;
+  measuring.get(message.nonce)?.push({ frameId: sender.frameId, ...message.result });
+  return false;
+});
+
+/** The frame to send a command to: where the selection is, or the most text. */
+function pick(found, want) {
+  const top = found.find((frame) => frame.frameId === 0) || found[0];
+  if (want === "selection") return found.find((frame) => frame.selection > 0) || top;
+  return found
+    .filter((frame) => frame.seen || frame === top)
+    .reduce((best, frame) => (frame.page > best.page ? frame : best), top);
+}
+
+async function deliver(tabId, message, frameId) {
+  try {
+    const options = frameId === undefined ? {} : { frameId };
+    await chrome.tabs.sendMessage(tabId, { ...message, settings: await settings() }, options);
   } catch (error) {
     console.warn("Earful:", error);
   }
 }
 
+/**
+ * Send a command to the right frame of a tab.
+ *
+ * `frameId` is the frame a right-click came from, when there was one.
+ */
+async function send(tabId, message, frameId) {
+  // Pause and stop are for whichever frame is reading; every frame hears them.
+  if (message.type === "toggle" || message.type === "stop") {
+    await deliver(tabId, message);
+    return;
+  }
+  const found = await measureFrames(tabId);
+  if (!found.length) return;
+  const clicked = found.find((frame) => frame.frameId === frameId);
+  const want = message.type === "read-page" ? "page" : "selection";
+  const target = (message.type === "read" && clicked) || pick(found, want);
+  await deliver(tabId, message, target.frameId);
+}
+
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (!tab?.id) return;
   if (info.menuItemId === "read-selection") {
-    send(tab.id, { type: "read", text: info.selectionText || "" });
+    send(tab.id, { type: "read", text: info.selectionText || "" }, info.frameId);
   } else if (info.menuItemId === "read-page") {
-    send(tab.id, { type: "read-page" });
+    send(tab.id, { type: "read-page" }, info.frameId);
   }
 });
 
