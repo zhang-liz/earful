@@ -21,6 +21,7 @@ const tick = (ms = 5) => new Promise((resolve) => setTimeout(resolve, ms));
  * @param {object}   [options.saved]  localStorage to start with
  * @param {object}   [options.answers]  what a GET of a url answers, by url
  * @param {object}   [options.progress]  what /progress-once answers
+ * @param {string}   [options.url]  the address the page is opened at
  */
 async function open(options = {}) {
   const state = {
@@ -73,7 +74,7 @@ async function open(options = {}) {
   if (options.progress) state.progress = options.progress;
 
   const dom = new JSDOM(page(options.page || "index.html"), {
-    url: "http://127.0.0.1:8888/",
+    url: options.url || "http://127.0.0.1:8888/",
     runScripts: "dangerously",
     pretendToBeVisual: true,
     beforeParse(window) {

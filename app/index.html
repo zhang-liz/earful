@@ -304,6 +304,22 @@
     textarea { min-height: 200px; font-size: 16px; } /* 16px stops iOS zooming */
     h1 { font-size: 12px; }
   }
+  /* Looks like a button, but it is a link: it is dragged to the bookmarks bar,
+     not clicked. */
+  .dragme {
+    display: block;
+    font-size: 9px;
+    text-align: center;
+    text-decoration: none;
+    color: var(--ink);
+    background: var(--panel-2);
+    border: 2px dashed var(--amber);
+    padding: 10px 8px;
+    margin-bottom: 8px;
+    cursor: grab;
+  }
+  /* A phone has no bookmarks bar to drag it to. */
+  @media (hover: none) { #bookmarkBox { display: none; } }
   .phoneUrl {
     color: var(--amber);
     font-size: 9px;
@@ -361,6 +377,12 @@
       </p>
       <div style="height:8px"></div>
       <button id="download" class="hidden" style="width:100%">SAVE .WAV</button>
+    </div>
+
+    <div class="box hidden" id="bookmarkBox">
+      <p class="legend">// READ ANY WEB PAGE</p>
+      <a id="bookmarklet" class="dragme" href="#">&#9654; READ IN EARFUL</a>
+      <p class="hint" id="bookmarkHint">DRAG THIS TO YOUR BOOKMARKS BAR. THEN CLICK IT ON ANY PAGE.</p>
     </div>
 
     <div class="box hidden" id="phonebox">
@@ -1331,10 +1353,101 @@ function restoreText() {
   } catch { /* nothing to restore */ }
 }
 
+/**
+ * The "Read in Earful" bookmark.
+ *
+ * Clicked on any page, it takes that page's text and opens this page with the
+ * text after the #, which starts reading it. The text never leaves the
+ * browser in the address: the part after # is not sent to any server.
+ *
+ * Any website could open this page with text after the #, so the bookmark
+ * carries a key only this browser knows. Without it the text is ignored, so a
+ * website cannot make Earful read out what it likes.
+ */
+const LINK_KEY = "readItToMe.linkKey";
+
+function linkKey() {
+  try {
+    let key = localStorage.getItem(LINK_KEY);
+    if (!key) {
+      // Not crypto.randomUUID: that is missing on a plain-http LAN address.
+      const bytes = crypto.getRandomValues(new Uint8Array(16));
+      key = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+      localStorage.setItem(LINK_KEY, key);
+    }
+    return key;
+  } catch { return ""; }  // no storage, so no key to check against
+}
+
+/** What runs on the other page. No comments inside: it becomes a link. */
+function grabPage(origin, key) {
+  const skip = "nav, footer, aside, [role=navigation], [aria-hidden=true]";
+  const code = "pre, code, kbd, samp, var";
+  const readable = (node) => {
+    if (!node.querySelector(code)) return node.innerText.trim();
+    const copy = node.cloneNode(true);
+    for (const inner of copy.querySelectorAll(code)) inner.remove();
+    return copy.innerText.trim().replace(/\s{2,}/g, " ");
+  };
+  let text = String(window.getSelection() || "").trim();
+  if (!text) {
+    const root = document.querySelector("article") || document.querySelector("main") ||
+      document.querySelector("[role=main]") || document.body;
+    const parts = [];
+    const taken = [];
+    for (const node of root.querySelectorAll("p, li, h1, h2, h3, h4, h5, h6, blockquote, figcaption, dd, dt")) {
+      if (node.closest(skip) || node.closest(code)) continue;
+      if (taken.some((chosen) => chosen.contains(node))) continue;
+      const part = readable(node);
+      if (part.length > 1) { parts.push(part); taken.push(node); }
+    }
+    text = parts.join("\n\n") || readable(root);
+  }
+  if (!text) { window.alert("Earful found no text on this page."); return; }
+  window.open(origin + "/#read=" + key + "." + encodeURIComponent(text), "earful");
+}
+
+function setUpBookmark() {
+  const key = linkKey();
+  if (!key) return;
+  const source = `(${grabPage})(${JSON.stringify(location.origin)},${JSON.stringify(key)})`;
+  // Percent-encoded, so its line breaks survive being saved as a bookmark.
+  const link = $("bookmarklet");
+  link.href = "javascript:" + encodeURIComponent(source);
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    $("bookmarkHint").textContent = "DRAG IT, DO NOT CLICK IT. DROP IT ON YOUR BOOKMARKS BAR.";
+  });
+  $("bookmarkBox").classList.remove("hidden");
+}
+
+/** Start reading text the bookmark sent. False when there was none. */
+function readFromLink() {
+  const match = /^#read=([0-9a-f]+)\.(.*)$/s.exec(location.hash);
+  if (!match) return false;
+  // Clear the address, so a refresh does not start the reading again.
+  history.replaceState(null, "", location.pathname + location.search);
+  if (match[1] !== linkKey()) return false;
+  let linked;
+  try { linked = decodeURIComponent(match[2]).trim(); } catch { return false; }
+  if (!linked) return false;
+
+  closeEditor();
+  text.value = linked;
+  refreshCount();
+  rememberText();
+  speak();
+  return true;
+}
+
 text.addEventListener("input", refreshCount);
 text.addEventListener("input", rememberText);
+// The bookmark reuses the tab it opened, and then only the # changes.
+window.addEventListener("hashchange", readFromLink);
+setUpBookmark();
+const fromLink = readFromLink();
 restoreText();
-restoreJob();
+if (!fromLink) restoreJob();
 speed.addEventListener("input", applySpeed);
 for (const button of $("presets").children) {
   button.addEventListener("click", () => setSpeed(Number(button.dataset.speed)));
