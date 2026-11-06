@@ -1,5 +1,5 @@
-// Settings and quick controls. The popup cannot touch the page itself, so
-// every action is relayed through the background worker.
+// Settings: the server, the password and the voice. Opened from the gear on
+// the player, or Options on the toolbar icon's right-click menu.
 
 const DEFAULTS = { server: "http://127.0.0.1:8888", password: "", voice: "af_heart", speed: 1 };
 const $ = (id) => document.getElementById(id);
@@ -68,14 +68,7 @@ async function save() {
   await loadVoices(await chrome.storage.sync.get(Object.keys(DEFAULTS)));
 }
 
-function relay(command) {
-  chrome.runtime.sendMessage({ type: "popup-command", command }, () => window.close());
-}
-
 $("save").addEventListener("click", save);
 $("voice").addEventListener("change", save);
-$("readSelection").addEventListener("click", () => relay({ type: "read-selection" }));
-$("readPage").addEventListener("click", () => relay({ type: "read-page" }));
-$("stop").addEventListener("click", () => relay({ type: "stop" }));
 
 load();

@@ -18,8 +18,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "Earful",
+    "default_title": "Earful: read this page aloud (Alt+R)",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
@@ -45,12 +44,12 @@
     }
   ],
   "commands": {
-    "read-selection": {
+    "read-or-pause": {
       "suggested_key": {
         "default": "Alt+R",
         "mac": "Alt+R"
       },
-      "description": "Read the selected text"
+      "description": "Read the page, or the selected text. Again to pause."
     }
   },
   "optional_host_permissions": [
@@ -61,5 +60,9 @@
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
   }
 }

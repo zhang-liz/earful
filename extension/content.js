@@ -21,6 +21,7 @@
   const timings = new Map();
   // Where each part's text sits in the page, so words can be lit in place.
   let sourceRanges = [];
+  let readingSelection = "";   // the selected text being read, if it was one
 
   // Played in the extension's hidden page (remote-audio.js): most pages do
   // not let their own audio load from this machine's server.
@@ -93,6 +94,7 @@
           <button data-speed="2">2x</button>
         </span>
         <span class="status" id="status">Getting ready...</span>
+        <button id="settings" title="Voice and settings">&#9881;</button>
         <button class="close" id="close" title="Stop and close">&#10005;</button>
       </div>`;
     (document.body || document.documentElement).append(host);
@@ -111,6 +113,9 @@
     $("prev").addEventListener("click", () => jumpTo(index - 1));
     $("next").addEventListener("click", () => jumpTo(index + 1));
     $("close").addEventListener("click", stop);
+    $("settings").addEventListener("click", () => {
+      chrome.runtime.sendMessage({ type: "open-settings" }).catch(() => {});
+    });
     for (const button of ui.speeds) {
       button.addEventListener("click", () => setSpeed(Number(button.dataset.speed)));
     }
@@ -437,6 +442,14 @@
 
   function toggle() {
     if (!job) return;
+    // Before the first part has played, a press means "not yet": hold the
+    // start, and the next press begins.
+    if (!started && !playing) {
+      started = true;
+      ui?.setPlaying(false);
+      setStatus();
+      return;
+    }
     if (playing) {
       player.pause();
       playing = false;
@@ -469,6 +482,7 @@
     job = null; ready = 0; index = 0; playing = false; started = false; waiting = false;
     timings.clear();
     sourceRanges = [];
+    readingSelection = "";
     pageIndex = null;
     document.getElementById(HOST_ID)?.remove();
     ui = null;
@@ -630,9 +644,13 @@
    * where anyone is reading, whatever it holds.
    */
   function measure() {
+    const selected = String(window.getSelection() || "").trim();
     return {
       page: pageText().length,
-      selection: (selectionInfo()?.text || "").length,
+      // Text already being read does not count: clicking the icon again
+      // with it still selected means pause, not start over.
+      selection: selected && selected !== readingSelection ? selected.length : 0,
+      reading: Boolean(job),
       seen: innerWidth >= 200 && innerHeight >= 150,
     };
   }
@@ -659,9 +677,10 @@
     if (message.type === "read") {
       const info = selectionInfo();
       read(message.text || info?.text || "", info?.from || 0);
+      readingSelection = String(window.getSelection() || "").trim();
     } else if (message.type === "read-selection") {
       const info = selectionInfo();
-      if (info) read(info.text, info.from);
+      if (info) { read(info.text, info.from); readingSelection = info.text.trim(); }
       else { buildUI(); ui.setStatus("Select some text first."); }
     } else if (message.type === "read-page") {
       const text = pageText();
