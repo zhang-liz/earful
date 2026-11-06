@@ -3,6 +3,19 @@
 Paste text. Get it read aloud in a natural human voice. Everything runs on your
 own Mac — no accounts, no API keys, no internet after the first run.
 
+## Download · 下载
+
+**Mac app** (Apple silicon, macOS 13 or later): get `Earful.dmg` from the
+[latest release](https://github.com/zhang-liz/tts/releases/latest). Nothing
+else to install, and no internet needed. The disk image has a note,
+`如何打开 How to open.txt`, for the one step macOS asks the first time.
+
+**Mac 应用**（Apple 芯片，macOS 13 或更新）：在[最新版本](https://github.com/zhang-liz/tts/releases/latest)下载
+`Earful.dmg`。不用安装别的东西，也不用联网。第一次打开时 macOS 会拦一下，
+磁盘映像里的 `如何打开 How to open.txt` 写了怎么做。
+
+The release also has the browser extension as a zip, for Chrome and Edge.
+
 ## Start it
 
 ```sh
