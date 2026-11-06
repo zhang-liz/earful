@@ -118,16 +118,25 @@ test("skipping past the last part does not break", async () => {
 
 test("changing speed applies straight away", async () => {
   const { h } = await reading();
-  const speed = h.button("1.5");
-  assert.ok(speed, "there should be a 1.5x button");
-  speed.click();
+  h.button("faster").click();
   await settle();
-  assert.strictEqual(h.state.audio.playbackRate, 1.5);
+  assert.strictEqual(h.state.audio.playbackRate, 1.25);
+  assert.strictEqual(h.button("rate").textContent, "1.25x");
+});
+
+test("speed steps stop at the slowest and fastest, and the label goes back to 1x", async () => {
+  const { h } = await reading();
+  for (let i = 0; i < 12; i++) h.button("faster").click();
+  assert.strictEqual(h.state.audio.playbackRate, 3);
+  for (let i = 0; i < 12; i++) h.button("slower").click();
+  assert.strictEqual(h.state.audio.playbackRate, 0.75);
+  h.button("rate").click();
+  assert.strictEqual(h.state.audio.playbackRate, 1);
 });
 
 test("speed survives moving to the next part", async () => {
   const { h } = await reading();
-  h.button("2").click();
+  for (let i = 0; i < 4; i++) h.button("faster").click();   // 2x
   await settle();
   h.state.audio.dispatchEvent({ type: "ended" });
   await settle();
@@ -299,5 +308,47 @@ test("a press while getting ready holds the start, and the next press begins", a
   await h.send({ type: "toggle", settings: {} });
   await settle();
   assert.strictEqual(h.state.audio.paused, false);
+  assert.match(h.state.audio.src, /\/0\.wav$/);
+});
+
+test("clicking a word in the page reads from there", async () => {
+  const { h } = await reading();
+  h.clickPage("p", 2, 20);
+  await settle();
+  assert.match(h.state.audio.src, /\/3\.wav$/, "the third paragraph is part 4");
+  assert.strictEqual(h.state.audio.paused, false);
+});
+
+test("a click while text is selected is left to the page", async () => {
+  const { h } = await reading();
+  h.state.selection = { isCollapsed: false, toString: () => "some words", rangeCount: 1 };
+  h.clickPage("p", 2, 20);
+  await settle();
+  assert.match(h.state.audio.src, /\/0\.wav$/);
+});
+
+test("the skip keys move a part back and forward", async () => {
+  const { h } = await reading();
+  await h.send({ type: "next", settings: {} });
+  await settle();
+  assert.match(h.state.audio.src, /\/1\.wav$/);
+  await h.send({ type: "prev", settings: {} });
+  await settle();
+  assert.match(h.state.audio.src, /\/0\.wav$/);
+});
+
+test("the player can be made small and big again", async () => {
+  const { h } = await reading();
+  h.button("size").click();
+  const bar = h.button("size").parentElement;
+  assert.ok(bar.classList.contains("mini"));
+  h.button("size").click();
+  assert.ok(!bar.classList.contains("mini"));
+});
+
+test("a click with Cmd or Ctrl held is left to the page", async () => {
+  const { h } = await reading();
+  h.clickPage("p", 2, 20, { metaKey: true });
+  await settle();
   assert.match(h.state.audio.src, /\/0\.wav$/);
 });

@@ -154,7 +154,11 @@ chrome.action.onClicked.addListener((tab) => {
 });
 
 chrome.commands.onCommand.addListener(async (command, tab) => {
-  if (command === "read-or-pause" && tab?.id) readOrPause(tab.id);
+  if (!tab?.id) return;
+  if (command === "read-or-pause") readOrPause(tab.id);
+  // Every frame hears a skip; only the one reading acts on it.
+  else if (command === "skip-back") deliver(tab.id, { type: "prev" });
+  else if (command === "skip-forward") deliver(tab.id, { type: "next" });
 });
 
 /**
