@@ -11,6 +11,12 @@ on run
 	do shell script helper() & " start >/dev/null 2>&1 &"
 end run
 
+-- earful://wake, from the browser extension: start the server, open no page,
+-- since the reader is already on the page they want read.
+on open location theURL
+	do shell script helper() & " wake >/dev/null 2>&1 &"
+end open location
+
 on reopen
 	do shell script helper() & " start >/dev/null 2>&1 &"
 end reopen

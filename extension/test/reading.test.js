@@ -66,9 +66,9 @@ test("reading a page sends its text and shows a player", async () => {
 test("an unreachable server is reported in the player", async () => {
   const s = server({ fail: true });
   const h = load(PAGE, { fetch: s.fetch });
-  await h.send({ type: "read-page", settings: {} });
+  await h.send({ type: "read-page", settings: { server: "http://192.168.1.5:8888" } });
   await settle();
-  assert.match(h.status(), /Cannot reach/);
+  assert.match(h.status(), /Cannot reach http:\/\/192\.168\.1\.5:8888/);
 });
 
 test("a refusal from the server is shown, not swallowed", async () => {
