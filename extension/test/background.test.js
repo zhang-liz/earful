@@ -16,6 +16,7 @@ function load(options = {}) {
     listeners: {},
     stored: options.stored || {},
     warnings: [],
+    hasScript: Boolean(options.hasScript),
     toOffscreen: [],
     offscreenCreated: [],
     offscreenOpen: false,
@@ -45,9 +46,17 @@ function load(options = {}) {
     commands: { onCommand: { addListener: (fn) => { state.listeners.command = fn; } } },
     storage: { sync: { get: async () => state.stored } },
     tabs: {
-      sendMessage: async (tabId, message) => {
-        if (message.type === "ping" && !options.hasScript) throw new Error("no receiver");
-        state.sentTo.push({ tabId, message });
+      sendMessage: async (tabId, message, opts = {}) => {
+        if (!state.hasScript) throw new Error("no receiver");
+        // Every frame hears a measure, and answers on its own.
+        if (message.type === "measure") {
+          const frames = options.frames || [{ frameId: 0, page: 100, selection: 0, seen: true }];
+          for (const { frameId, ...result } of frames) {
+            state.listeners.message({ type: "measured", nonce: message.nonce, result }, { frameId }, () => {});
+          }
+          return { ok: true };
+        }
+        if (message.type !== "ping") state.sentTo.push({ tabId, message, frameId: opts.frameId });
         return { ok: true };
       },
       query: async () => (options.noTab ? [] : [{ id: 7 }]),
@@ -56,19 +65,20 @@ function load(options = {}) {
       executeScript: async (o) => {
         if (options.cannotInject) throw new Error("cannot run on this page");
         state.injected.push(o);
+        state.hasScript = true;
       },
       insertCSS: async (o) => { state.injected.push(o); },
     },
   };
 
-  const context = { chrome, btoa, crypto, fetch: options.fetch, console: { warn: (...a) => state.warnings.push(a.join(" ")), log: console.log } };
+  const context = { chrome, btoa, crypto, setTimeout, fetch: options.fetch, console: { warn: (...a) => state.warnings.push(a.join(" ")), log: console.log } };
   context.globalThis = context;
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8"), context);
   return { state, chrome };
 }
 
-const settle = (ms = 20) => new Promise((r) => setTimeout(r, ms));
+const settle = (ms = 260) => new Promise((r) => setTimeout(r, ms));
 
 test("installing adds both right-click entries", () => {
   const { state } = load();
@@ -273,4 +283,64 @@ test("closing the page stops its audio", async () => {
   port.close();
   await settle();
   assert.deepStrictEqual(state.toOffscreen.at(-1).op, "gone");
+});
+
+/** A Claude artifact: a top page with a title bar, the text in a frame. */
+const ARTIFACT = [
+  { frameId: 0, page: 58, selection: 0, seen: true },
+  { frameId: 3, page: 9000, selection: 0, seen: true },
+  { frameId: 4, page: 0, selection: 0, seen: false },
+];
+
+test("reading the page goes to the frame holding the text", async () => {
+  const { state } = load({ hasScript: true, frames: ARTIFACT });
+  state.listeners.menuClick({ menuItemId: "read-page", frameId: 0 }, { id: 7 });
+  await settle();
+  const sent = state.sentTo.filter((s) => s.message.type === "read-page");
+  assert.strictEqual(sent.length, 1, "one frame reads, not every frame at once");
+  assert.strictEqual(sent[0].frameId, 3);
+});
+
+test("a frame too small to see is not read, whatever it holds", async () => {
+  const { state } = load({ hasScript: true, frames: [
+    { frameId: 0, page: 500, selection: 0, seen: true },
+    { frameId: 9, page: 5000, selection: 0, seen: false },
+  ] });
+  state.listeners.menuClick({ menuItemId: "read-page" }, { id: 7 });
+  await settle();
+  assert.strictEqual(state.sentTo.find((s) => s.message.type === "read-page").frameId, 0);
+});
+
+test("reading a selection goes to the frame it is in", async () => {
+  const { state } = load({ hasScript: true, frames: [
+    { frameId: 0, page: 58, selection: 0, seen: true },
+    { frameId: 3, page: 9000, selection: 40, seen: true },
+  ] });
+  state.listeners.command("read-selection", { id: 7 });
+  await settle();
+  assert.strictEqual(state.sentTo.find((s) => s.message.type === "read-selection").frameId, 3);
+});
+
+test("a right-clicked selection goes to the frame it was clicked in", async () => {
+  const { state } = load({ hasScript: true, frames: ARTIFACT });
+  state.listeners.menuClick({ menuItemId: "read-selection", selectionText: "hi", frameId: 3 }, { id: 7 });
+  await settle();
+  assert.strictEqual(state.sentTo.find((s) => s.message.type === "read").frameId, 3);
+});
+
+test("pause and stop go to every frame, so the one reading hears them", async () => {
+  const { state } = load({ hasScript: true, frames: ARTIFACT });
+  state.listeners.message({ type: "popup-command", command: { type: "stop" } }, null, () => {});
+  await settle();
+  const sent = state.sentTo.find((s) => s.message.type === "stop");
+  assert.strictEqual(sent.frameId, undefined);
+});
+
+test("the script goes into every frame of a tab that lacks it", async () => {
+  const { state } = load({ hasScript: false, frames: ARTIFACT });
+  state.listeners.menuClick({ menuItemId: "read-page" }, { id: 7 });
+  await settle();
+  const injected = state.injected.find((i) => (i.files || []).includes("content.js"));
+  assert.strictEqual(injected.target.allFrames, true);
+  assert.strictEqual(state.sentTo.find((s) => s.message.type === "read-page").frameId, 3);
 });
