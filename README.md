@@ -66,7 +66,9 @@ and Chinese. The disk image holds the app, a link to Applications, and
 blocks it the first time, and the note says how to open it anyway.
 
 The **Mac app** workflow builds, checks and packs it on GitHub for a `v*` tag
-or by hand, and attaches the disk image to a draft release.
+or by hand. For a tag it then publishes the release, with the disk image, the
+extension zip and the notes in `mac/release-notes.md`. To release:
+`git tag v1.0.1 && git push origin v1.0.1`.
 
 ## Use it from your phone
 
