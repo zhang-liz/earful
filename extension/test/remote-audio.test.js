@@ -117,3 +117,14 @@ test("losing the worker fails a waiting play so the player can say so", async ()
   await assert.rejects(waiting, (error) => error.name !== "AbortError");
   await settle();
 });
+
+test("the sound being taken by another tab is passed on, as paused", () => {
+  const { audio, report } = load();
+  audio.src = "a.wav";
+  let heard = 0;
+  audio.addEventListener("taken", () => heard++);
+  report("taken", { paused: true, currentTime: 4 });
+  assert.strictEqual(heard, 1);
+  assert.strictEqual(audio.paused, true);
+  assert.strictEqual(audio.currentTime, 4);
+});

@@ -45,12 +45,11 @@ chrome.runtime.onMessage.addListener((message, _sender, respond) => {
     return false;
   }
 
-  // Another page starts reading: the first stops, and is told so.
+  // Another page starts reading: the first stops, and is told so. Even when
+  // it was paused or waiting for a part, or it would take the audio back.
   if (message.owner !== owner) {
-    if (owner !== null && !audio.paused) {
-      audio.pause();
-      report("pause", owner, gen);
-    }
+    audio.pause();
+    report("taken", owner, gen);
     clear();
     owner = message.owner;
   }

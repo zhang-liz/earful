@@ -276,3 +276,13 @@ test("the old part ending during a wait does not skip the part waited for", asyn
   await settle(1500);
   assert.match(h.state.audio.src, /\/1\.wav$/, "part 2 should play, not part 3");
 });
+
+test("another tab taking the sound leaves this one paused, ready to play", async () => {
+  const { h } = await reading();
+  h.state.audio.dispatchEvent({ type: "taken" });
+  await settle(700);
+  assert.match(h.status(), /Paused/);
+  h.button("play").click();
+  await settle();
+  assert.strictEqual(h.state.audio.paused, false, "play here takes the sound back");
+});
