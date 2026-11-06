@@ -384,6 +384,18 @@
   // Real sound is coming out, so the prompt has done its job. The highlight
   // loop stops whenever playing goes false, so it has to be started again
   // rather than only having the flag put back.
+  // Another tab started reading, which stops this one. Say paused, so play
+  // here takes the sound back, rather than claiming to still be reading.
+  player.addEventListener("taken", () => {
+    playing = false;
+    waiting = false;
+    needsClick = false;
+    if (raf) { cancelAnimationFrame(raf); raf = null; }
+    clearHighlight();
+    ui?.setPlaying(false);
+    setStatus();
+  });
+
   player.addEventListener("playing", () => {
     needsClick = false;
     if (playing && raf) return;      // already running, nothing to restart
