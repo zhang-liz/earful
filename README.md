@@ -1,7 +1,12 @@
 # Earful
 
-Paste text. Get it read aloud in a natural human voice. Everything runs on your
-own Mac — no accounts, no API keys, no internet after the first run.
+Paste text, or open any web page. Earful reads it aloud in a natural voice, in
+English or Mandarin Chinese, and lights up each word as it speaks. Everything
+runs on your own Mac — no accounts, no API keys, and your text goes nowhere.
+
+中文说明见 [README.zh-CN.md](README.zh-CN.md)。
+
+![Earful reading a web page aloud](extension/store/screenshots/reading-en.png)
 
 ## Download · 下载
 
@@ -15,8 +20,20 @@ else to install, and no internet needed. The disk image has a note,
 磁盘映像里的 `如何打开 How to open.txt` 写了怎么做。
 
 The release also has the browser extension as a zip, for Chrome and Edge.
+To install it:
 
-## Start it
+1. Open the Earful app once.
+2. Download `earful-extension-<version>.zip` from the release and unzip it.
+3. Open `chrome://extensions` (or `edge://extensions`).
+4. Turn on **Developer mode**, then click **Load unpacked** and pick the
+   unzipped folder.
+
+Click the amber speaker icon on any page, or press `Alt+R`, to hear it. More in
+[Browser extension](#browser-extension).
+
+## Start it from the source code
+
+For developers. People who only want to use Earful can take the Mac app above.
 
 ```sh
 ./run.sh
@@ -24,8 +41,8 @@ The release also has the browser extension as a zip, for Chrome and Edge.
 
 Your browser opens at http://127.0.0.1:8888
 
-The first run downloads the voice model (~350 MB). After that it starts in a
-few seconds. Press `Ctrl+C` in the terminal to stop.
+The first run downloads the voice model (~350 MB), and the first Chinese reading
+downloads the Chinese model. After that it starts in a few seconds. Press `Ctrl+C` in the terminal to stop.
 
 To use a different port: `PORT=9000 ./run.sh`
 
@@ -135,7 +152,7 @@ nothing to carry on, instead of failing on a reading that is gone.
 ## Use it
 
 1. Paste your text — an article, a chapter, anything. Length does not matter.
-2. Pick a voice. Press **Hear voice** to sample one first. Changing the voice
+2. Pick a voice. Press **HEAR** to sample one first. Changing the voice
    while an article is open re-reads the whole thing in the new one.
 3. Press **Read it to me**. It starts reading after a couple of seconds and
    keeps rendering the rest while you listen.
@@ -160,14 +177,17 @@ Controls live in the left sidebar:
 | `1x` `1.5x` `2x` | One-press speed presets |
 | Slider | Any speed from 0.5x to 3x |
 | ⏮ ▶ ⏭ | Previous part, play/pause, next part |
+| `LOOP` | Start again from the top when the reading ends |
 | Meter | One cell per part; green once rendered |
 | `SAVE .WAV` | Appears when the whole thing is done |
+| `+ NEW TEXT` | Under the article: stop, and paste something else |
 
 Keyboard: **Space** plays or pauses, **←** and **→** move between parts.
 
 Speed changes apply instantly, mid-sentence, and pitch stays natural.
 
-Saved files go to `output/`. Delete them any time.
+The server keeps the audio in `output/` (in the Mac app:
+`~/Library/Caches/Earful/output`). Delete it any time.
 
 ## Speed
 
@@ -212,7 +232,8 @@ ahead of you.
 
 - macOS with Apple Silicon (uses the GPU via MPS; falls back to CPU)
 - [uv](https://docs.astral.sh/uv/) — installs Python and dependencies
-- `espeak-ng` — sounds out unusual words: `brew install espeak-ng`
+
+The Mac app needs none of this. It carries everything inside.
 
 ## Layout
 
@@ -220,8 +241,11 @@ ahead of you.
 app/engine.py    chunking + Kokoro synthesis
 app/server.py    HTTP endpoints, job tracking, progress stream
 app/index.html   the page
+app/strings/     every word on the page, in English and Chinese
 extension/       Chrome extension: read any web page aloud
 editor-extension/ VS Code, Cursor and Antigravity: read the file you are editing
+mac/             the Mac app: build, check, disk image
+tests/           server tests
 run.sh           starts the server and opens the browser
 output/          generated audio (git-ignored)
 ```
@@ -242,7 +266,8 @@ text (`Cmd+A`, `Cmd+C`) and press **READ WHAT I COPIED**.
 Reads any web page aloud, highlighting each word in the page itself.
 
 Install it once. Chrome will not let anything but you do this, so these four
-steps have to be done by hand:
+steps have to be done by hand. With the Mac app, use the zip from the release
+instead (see [Download](#download--下载)). From the source code:
 
 1. Start the server: `./run.sh`
 2. Open `chrome://extensions` in Chrome.
@@ -309,3 +334,14 @@ in VS Code, Cursor and Antigravity. Comment markers and brackets are skipped
 in source files, so you hear the words rather than the punctuation.
 
 See `editor-extension/README.md` for how to install and use it.
+
+## Contributing
+
+Bug reports, fixes and translations are welcome, in English or Chinese. See
+[CONTRIBUTING.md](CONTRIBUTING.md). For a security problem, see
+[SECURITY.md](SECURITY.md).
+
+## License
+
+MIT. See [LICENSE](LICENSE). Earful uses the work of other projects; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
