@@ -63,3 +63,19 @@ def test_espeak_already_loaded_is_pointed_at_the_copy(loader, monkeypatch):
     monkeypatch.setitem(sys.modules, "misaki.espeak", types.SimpleNamespace(EspeakWrapper=wrapper))
     engine.use_short_espeak_data()
     assert told == [str((cache / "espeak-ng-data").resolve())]
+
+
+def test_a_read_only_app_is_copied_too(loader):
+    """A downloaded app can be read-only; the copy must still work."""
+    place, cache = loader
+    data = place(200)
+    for path in [*data.rglob("*"), data]:
+        path.chmod(path.stat().st_mode & ~0o222)
+    try:
+        engine.use_short_espeak_data()
+        assert espeakng_loader.get_data_path() == str((cache / "espeak-ng-data").resolve())
+        assert (cache / "espeak-ng-data" / "phontab").read_bytes() == b"sounds"
+        assert [p.name for p in cache.iterdir() if p.name.startswith("tmp")] == [], "staging left behind"
+    finally:
+        for path in [data, *data.rglob("*")]:
+            path.chmod(path.stat().st_mode | 0o200)

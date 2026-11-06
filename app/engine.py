@@ -33,6 +33,12 @@ def _cache_folders() -> list[Path]:
     return [first, Path(tempfile.gettempdir()) / f"earful-{os.getuid()}"]
 
 
+def _make_writable(folder: Path) -> None:
+    for path in [folder, *folder.rglob("*")]:
+        if not path.is_symlink():
+            path.chmod(path.stat().st_mode | 0o200)
+
+
 def use_short_espeak_data() -> None:
     """Point espeak at a copy of its data on a short path, when it needs one.
 
@@ -58,6 +64,9 @@ def use_short_espeak_data() -> None:
                 # Copy beside it, then swap in, so a half-made copy is never used.
                 staging = Path(tempfile.mkdtemp(dir=folder))
                 shutil.copytree(data, staging / "espeak-ng-data")
+                # A read-only app gives read-only copies, which then cannot
+                # be moved into place or replaced later.
+                _make_writable(staging)
                 shutil.rmtree(target, ignore_errors=True)
                 try:
                     (staging / "espeak-ng-data").rename(target)
@@ -68,7 +77,8 @@ def use_short_espeak_data() -> None:
                 finally:
                     shutil.rmtree(staging, ignore_errors=True)
                 marker.write_text(stamp)
-        except OSError:
+        except OSError as error:
+            print(f"Earful: cannot copy espeak's data to {folder}: {error}", file=sys.stderr)
             continue
         espeakng_loader.get_data_path = lambda path=str(target): path
         espeak = sys.modules.get("misaki.espeak")
