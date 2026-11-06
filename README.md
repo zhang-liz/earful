@@ -184,6 +184,10 @@ your bookmarks bar. On any page, click that bookmark: Earful opens and reads
 the page, or just the text you selected. Works in Chrome, Safari, Arc and
 Brave, with nothing to install.
 
+Some pages, a Claude artifact among them, keep their text in a frame from
+another site, which a bookmark may not read. Earful then asks you to copy the
+text (`Cmd+A`, `Cmd+C`) and press **READ WHAT I COPIED**.
+
 ## Browser extension
 
 Reads any web page aloud, highlighting each word in the page itself.

@@ -88,7 +88,52 @@ test("the bookmark sends only the selection when there is one", async () => {
   assert.ok(opened.url.endsWith(encodeURIComponent("Just this bit.")), opened.url);
 });
 
-test("a page with no text says so instead of opening Earful", async () => {
-  const opened = await runBookmark("<body></body>");
-  assert.deepStrictEqual(opened, [{ alert: "Earful found no text on this page." }]);
+test("a page it cannot read opens Earful asking for the text to be copied", async () => {
+  const opened = await runBookmark("<body><iframe></iframe></body>");
+  assert.deepStrictEqual(opened, [{ url: `http://127.0.0.1:8888/#copied=${KEY}`, name: "earful" }]);
+});
+
+/** Earful opened by the bookmark from a page it could not read. */
+async function askedToCopy(clipboard, saved = SAVED) {
+  const page = await open({ saved, url: `http://127.0.0.1:8888/#copied=${KEY}` });
+  Object.defineProperty(page.window.navigator, "clipboard", { value: clipboard, configurable: true });
+  return page;
+}
+
+test("the copied text is read at the press of the button", async () => {
+  const page = await askedToCopy({ readText: async () => "  Text copied from the doc.  " });
+  assert.ok(!page.$("copiedBox").classList.contains("hidden"));
+  assert.strictEqual(page.window.location.hash, "");
+  assert.deepStrictEqual(spoken(page), [], "nothing is read before the button is pressed");
+
+  page.$("readCopied").click();
+  await page.tick(20);
+  assert.deepStrictEqual(spoken(page), ["Text copied from the doc."]);
+  assert.ok(page.$("copiedBox").classList.contains("hidden"));
+  await page.close();
+});
+
+test("an empty clipboard says to copy first", async () => {
+  const page = await askedToCopy({ readText: async () => "" });
+  page.$("readCopied").click();
+  await page.tick(20);
+  assert.deepStrictEqual(spoken(page), []);
+  assert.match(page.$("copiedError").textContent, /NOTHING IS COPIED/);
+  await page.close();
+});
+
+test("a blocked clipboard says to paste instead, and shows the box", async () => {
+  const page = await askedToCopy({ readText: async () => { throw new Error("denied"); } });
+  page.$("readCopied").click();
+  await page.tick(20);
+  assert.deepStrictEqual(spoken(page), []);
+  assert.match(page.$("copiedError").textContent, /CMD\+V/);
+  assert.ok(!page.$("inputBox").classList.contains("hidden"));
+  await page.close();
+});
+
+test("a copy request without this browser's key is ignored", async () => {
+  const page = await open({ saved: SAVED, url: "http://127.0.0.1:8888/#copied=ffff" });
+  assert.ok(page.$("copiedBox").classList.contains("hidden"));
+  await page.close();
 });
