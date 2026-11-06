@@ -111,7 +111,17 @@ def check(folder):
     for cs in m.get("content_scripts", []): files += cs.get("js",[]) + cs.get("css",[])
     files += list(m.get("icons",{}).values())
     files += list(m.get("action",{}).get("default_icon",{}).values())
-    for f in files:
+    # Files the pages and the worker load in turn.
+    pages = [f for f in files if f.endswith(".html")] + ["offscreen.html"]
+    for page in pages:
+        path = os.path.join(folder, page)
+        if os.path.exists(path):
+            files += re.findall(r'<script[^>]+src="([^"]+)"', open(path, encoding="utf-8").read())
+    worker = m.get("background", {}).get("service_worker")
+    if worker and os.path.exists(os.path.join(folder, worker)):
+        for call in re.findall(r"importScripts\(([^)]*)\)", open(os.path.join(folder, worker), encoding="utf-8").read()):
+            files += re.findall(r'"([^"]+)"', call)
+    for f in dict.fromkeys(files):
         if not os.path.exists(os.path.join(folder, f)): bad.append(f"missing file: {f}")
     return bad
 
